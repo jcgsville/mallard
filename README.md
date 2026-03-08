@@ -9,14 +9,22 @@ Forward-only schema migrations for DuckDB, with heavy inspiration from Graphile 
 ## Getting started
 
 ```bash
-cargo run -- init --db-path ./dev.duckdb
+cargo run -- init
 ```
 
 Expected output:
 
 ```text
-Connected to DuckDB at ./dev.duckdb
+Created /path/to/project/mallard.toml
+Prepared /path/to/project/migrations/committed
+Prepared /path/to/project/migrations/current.sql
 ```
+
+This bootstraps the project layout and writes a default `mallard.toml` with:
+
+- config discovery via `mallard.toml`
+- `${VAR}` and `${VAR:-default}` environment interpolation
+- a `migrations/current.sql` authoring file from day one
 
 ## Initial direction
 
@@ -24,6 +32,5 @@ The project is currently scaffolded as a small Rust CLI using `clap` and `duckdb
 From here, a natural next step is to add commands like:
 
 - `init`
-- `new`
 - `migrate`
 - `status`

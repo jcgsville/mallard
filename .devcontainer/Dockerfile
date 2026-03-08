@@ -15,6 +15,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sudo \
     && rm -rf /var/lib/apt/lists/*
 
+RUN rustup component add rustfmt
+
 RUN useradd -m -s /bin/bash -G sudo coder \
     && echo "coder ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/coder \
     && chmod 0440 /etc/sudoers.d/coder \
