@@ -120,7 +120,7 @@ fn ensure_file(path: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{DEFAULT_CONFIG, init_in_dir};
+    use super::{init_in_dir, DEFAULT_CONFIG};
     use std::fs;
     use tempfile::tempdir;
 
