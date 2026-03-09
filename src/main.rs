@@ -20,12 +20,12 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
-/// Forward-only DuckDB migration CLI.
+/// DuckDB schema migration CLI
 #[derive(Debug, Parser)]
 #[command(
     name = "mallard",
     version,
-    about = "Manage forward-only DuckDB schema migrations"
+    about = "DuckDB schema migrations"
 )]
 struct Cli {
     /// Path to a Mallard config file.
