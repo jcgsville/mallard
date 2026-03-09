@@ -30,8 +30,15 @@ pub struct InitResult {
 
 pub fn init(explicit_config_path: Option<&Path>) -> Result<InitResult> {
     let working_dir = env::current_dir().context("failed to determine current directory")?;
+    init_in_dir(&working_dir, explicit_config_path)
+}
+
+fn init_in_dir(
+    working_dir: &Path,
+    explicit_config_path: Option<&Path>,
+) -> Result<InitResult> {
     let (config_path, config_created) =
-        resolve_init_config_path(&working_dir, explicit_config_path)?;
+        resolve_init_config_path(working_dir, explicit_config_path)?;
 
     let config = Config::load(&config_path)?;
     let committed_dir = config.migrations_dir.join("committed");
@@ -48,7 +55,7 @@ pub fn init(explicit_config_path: Option<&Path>) -> Result<InitResult> {
         project_root: config
             .config_path
             .parent()
-            .unwrap_or(&working_dir)
+            .unwrap_or(working_dir)
             .to_path_buf(),
         config_path: config.config_path,
         config_created,
@@ -120,34 +127,15 @@ fn ensure_file(path: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{DEFAULT_CONFIG, init};
-    use std::{env, fs};
+    use super::{DEFAULT_CONFIG, init_in_dir};
+    use std::fs;
     use tempfile::tempdir;
-
-    struct CurrentDirGuard {
-        original_dir: std::path::PathBuf,
-    }
-
-    impl CurrentDirGuard {
-        fn set_to(path: &std::path::Path) -> Self {
-            let original_dir = env::current_dir().unwrap();
-            env::set_current_dir(path).unwrap();
-            Self { original_dir }
-        }
-    }
-
-    impl Drop for CurrentDirGuard {
-        fn drop(&mut self) {
-            env::set_current_dir(&self.original_dir).unwrap();
-        }
-    }
 
     #[test]
     fn init_bootstraps_project_files() {
         let temp_dir = tempdir().unwrap();
-        let _guard = CurrentDirGuard::set_to(temp_dir.path());
 
-        let result = init(None).unwrap();
+        let result = init_in_dir(temp_dir.path(), None).unwrap();
 
         assert!(result.config_created);
         assert_eq!(
@@ -173,7 +161,7 @@ migrations_dir = "db/migrations"
         )
         .unwrap();
 
-        let result = init(Some(&config_path)).unwrap();
+        let result = init_in_dir(temp_dir.path(), Some(&config_path)).unwrap();
 
         assert!(!result.config_created);
         assert!(temp_dir.path().join("db/migrations/committed").is_dir());
@@ -187,9 +175,8 @@ migrations_dir = "db/migrations"
         let nested_dir = temp_dir.path().join("apps/api");
         fs::create_dir_all(&nested_dir).unwrap();
         fs::write(temp_dir.path().join("mallard.toml"), DEFAULT_CONFIG).unwrap();
-        let _guard = CurrentDirGuard::set_to(&nested_dir);
 
-        let result = init(None).unwrap();
+        let result = init_in_dir(&nested_dir, None).unwrap();
 
         assert!(!result.config_created);
         assert_eq!(result.project_root, temp_dir.path());
