@@ -17,7 +17,7 @@ pub struct CommitResult {
 
 pub fn run(config: &Config) -> Result<CommitResult> {
     let current = current_migration::load(config)?;
-    let expanded_current = compiler::expand_current(config)?;
+    let expanded_current = compiler::expand_includes(config, &current.path, &current.contents)?;
     validate_current_migration(&expanded_current)?;
 
     validate_against_shadow(config, &expanded_current)?;

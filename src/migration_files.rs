@@ -52,6 +52,13 @@ pub fn load_committed_migrations(committed_dir: &Path) -> Result<Vec<CommittedMi
             );
         }
 
+        if index == 0 && migration.previous_hash.is_some() {
+            bail!(
+                "first committed migration {} must have an empty previous hash",
+                migration.filename
+            );
+        }
+
         if let Some(expected_previous) = previous_hash.as_deref() {
             if migration.previous_hash.as_deref() != Some(expected_previous) {
                 bail!(
@@ -261,6 +268,29 @@ mod tests {
         let error = load_committed_migrations(&committed_dir).unwrap_err();
 
         assert!(error.to_string().contains("hash mismatch"));
+    }
+
+    #[test]
+    fn rejects_non_empty_previous_hash_for_first_migration() {
+        let temp_dir = tempdir().unwrap();
+        let committed_dir = temp_dir.path().join("committed");
+        fs::create_dir_all(&committed_dir).unwrap();
+        let body = "select 1;";
+        let previous_hash = "a".repeat(64);
+        let hash = migration_hash::calculate(Some(&previous_hash), body);
+        fs::write(
+            committed_dir.join("000001.sql"),
+            format!("--! Previous: {previous_hash}\n--! Hash: {hash}\n\n{body}\n"),
+        )
+        .unwrap();
+
+        let error = load_committed_migrations(&committed_dir).unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("first committed migration 000001.sql")
+        );
     }
 
     #[test]

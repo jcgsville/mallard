@@ -10,8 +10,8 @@ pub struct RunResult {
 }
 
 pub fn run(config: &Config) -> Result<RunResult> {
-    let compiled_current = compiler::compile_current(config)?;
     migrate::run(config)?;
+    let compiled_current = compiler::compile_current(config)?;
     let mut connection = Connection::open(&config.database_path)
         .with_context(|| format!("failed to open {}", config.database_path.display()))?;
     apply_current_sql(&mut connection, &compiled_current)?;
@@ -97,5 +97,41 @@ mod tests {
             )
             .unwrap();
         assert_eq!(users_table_exists, 0);
+    }
+
+    #[test]
+    fn applies_pending_committed_migrations_before_current_compile_errors() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("mallard.toml");
+        fs::write(&config_path, "version = 1").unwrap();
+        let committed_dir = temp_dir.path().join("migrations/committed");
+        fs::create_dir_all(&committed_dir).unwrap();
+        let first_body = "create table users (id integer primary key);";
+        let first_hash = migration_hash::calculate(None, first_body);
+        fs::write(
+            committed_dir.join("000001.sql"),
+            format!("--! Previous: \n--! Hash: {first_hash}\n\n{first_body}\n"),
+        )
+        .unwrap();
+        fs::write(
+            temp_dir.path().join("migrations/current.sql"),
+            "insert into :MISSING_SCHEMA.users values (1);\n",
+        )
+        .unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let error = run(&config).unwrap_err();
+
+        assert!(error.to_string().contains("unknown placeholder"));
+
+        let connection = Connection::open(&config.database_path).unwrap();
+        let users_table_exists: i64 = connection
+            .query_row(
+                "SELECT count(*) FROM information_schema.tables WHERE table_name = 'users'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(users_table_exists, 1);
     }
 }

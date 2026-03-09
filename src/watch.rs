@@ -14,18 +14,26 @@ pub fn run(config: &Config, interval: Duration) -> Result<()> {
 
     loop {
         match collect_watch_state(config) {
-            Ok(state) => {
-                if previous_state.as_ref() != Some(&state) {
-                    if let Err(error) = run_current::run(config) {
-                        eprintln!("error: {error:#}");
-                    }
-                    previous_state = Some(state);
-                }
-            }
+            Ok(state) => maybe_run_for_state(config, &mut previous_state, state),
             Err(error) => eprintln!("error: {error:#}"),
         }
 
         thread::sleep(interval);
+    }
+}
+
+fn maybe_run_for_state(
+    config: &Config,
+    previous_state: &mut Option<Vec<FileStamp>>,
+    state: Vec<FileStamp>,
+) {
+    if previous_state.as_ref() == Some(&state) {
+        return;
+    }
+
+    match run_current::run(config) {
+        Ok(_) => *previous_state = Some(state),
+        Err(error) => eprintln!("error: {error:#}"),
     }
 }
 
@@ -71,4 +79,64 @@ fn collect_watch_state(config: &Config) -> Result<Vec<FileStamp>> {
 
     stamps.sort_by(|left, right| left.path.cmp(&right.path));
     Ok(stamps)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+
+    use tempfile::tempdir;
+
+    use super::{maybe_run_for_state, FileStamp};
+    use crate::config::Config;
+
+    fn sample_state(path: &str) -> Vec<FileStamp> {
+        vec![FileStamp {
+            path: PathBuf::from(path),
+            modified_millis: 1,
+            size: 1,
+        }]
+    }
+
+    #[test]
+    fn records_state_after_successful_run() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("mallard.toml");
+        fs::write(&config_path, "version = 1").unwrap();
+        fs::create_dir_all(temp_dir.path().join("migrations/committed")).unwrap();
+        fs::write(
+            temp_dir.path().join("migrations/current.sql"),
+            "select 1;\n",
+        )
+        .unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let state = sample_state("current.sql");
+        let mut previous_state = None;
+
+        maybe_run_for_state(&config, &mut previous_state, state.clone());
+
+        assert_eq!(previous_state, Some(state));
+    }
+
+    #[test]
+    fn leaves_state_unset_after_failed_run() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("mallard.toml");
+        fs::write(&config_path, "version = 1").unwrap();
+        fs::create_dir_all(temp_dir.path().join("migrations/committed")).unwrap();
+        fs::write(
+            temp_dir.path().join("migrations/current.sql"),
+            "select * from :MISSING_SCHEMA.users;\n",
+        )
+        .unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let mut previous_state = None;
+
+        maybe_run_for_state(&config, &mut previous_state, sample_state("current.sql"));
+
+        assert!(previous_state.is_none());
+    }
 }
