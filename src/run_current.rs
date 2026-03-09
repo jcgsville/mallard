@@ -10,6 +10,8 @@ pub struct RunResult {
 }
 
 pub fn run(config: &Config) -> Result<RunResult> {
+    // NOTE: committed migrations are applied first and remain applied even if
+    // the current migration later fails to compile or execute.
     migrate::run(config)?;
     let compiled_current = compiler::compile_current(config)?;
     let mut connection = Connection::open(&config.database_path)

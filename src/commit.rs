@@ -24,7 +24,7 @@ pub fn run(config: &Config) -> Result<CommitResult> {
 
     let committed_dir = config.migrations_dir.join("committed");
     let committed = load_committed_migrations(&committed_dir)?;
-    let next_version = committed.len() as u32 + 1;
+    let next_version = next_migration_version(committed.len())?;
     let previous_hash = committed.last().map(|migration| migration.hash.clone());
     let hash = migration_hash::calculate(previous_hash.as_deref(), &expanded_current);
     let filename = format!("{:06}.sql", next_version);
@@ -105,13 +105,22 @@ fn render_committed_migration(previous_hash: Option<&str>, hash: &str, body: &st
     )
 }
 
+fn next_migration_version(committed_len: usize) -> Result<u32> {
+    let next_version = committed_len as u64 + 1;
+    if next_version > 999_999 {
+        bail!("committed migration sequence has reached the maximum of 999,999");
+    }
+
+    Ok(next_version as u32)
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
 
     use tempfile::tempdir;
 
-    use super::run;
+    use super::{next_migration_version, run};
     use crate::{config::Config, migrate, migration_hash};
 
     #[test]
@@ -251,6 +260,17 @@ mod tests {
         assert_eq!(
             fs::read_to_string(temp_dir.path().join("migrations/current.sql")).unwrap(),
             ""
+        );
+    }
+
+    #[test]
+    fn rejects_committed_versions_beyond_six_digits() {
+        let error = next_migration_version(999_999).unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("committed migration sequence has reached the maximum")
         );
     }
 }

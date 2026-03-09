@@ -1,6 +1,6 @@
 use std::fs;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use duckdb::Connection;
 
 use crate::{
@@ -42,15 +42,18 @@ pub fn run(config: &Config) -> Result<UncommitResult> {
     }
 
     let restored_current_path = current_migration::overwrite_empty_with_body(config, &latest.body)?;
-    if let Err(error) = fs::remove_file(&latest.path) {
-        fs::write(&restored_current_path, "").with_context(|| {
-            format!(
-                "failed to roll back {} after failing to remove {}",
-                restored_current_path.display(),
-                latest.path.display()
-            )
-        })?;
-        return Err(error).with_context(|| format!("failed to remove {}", latest.path.display()));
+    if let Err(remove_error) = fs::remove_file(&latest.path) {
+        if let Err(rollback_error) = fs::write(&restored_current_path, "") {
+            return Err(rollback_error).with_context(|| {
+                format!(
+                    "failed to roll back {} after failing to remove {}: {remove_error}",
+                    restored_current_path.display(),
+                    latest.path.display()
+                )
+            });
+        }
+        return Err(remove_error)
+            .with_context(|| format!("failed to remove {}", latest.path.display()));
     }
 
     Ok(UncommitResult {
@@ -184,9 +187,11 @@ mod tests {
 
         let error = run(&config).unwrap_err();
 
-        assert!(error
-            .to_string()
-            .contains("applied migration history diverges at 000001.sql"));
+        assert!(
+            error
+                .to_string()
+                .contains("applied migration history diverges at 000001.sql")
+        );
     }
 
     #[cfg(unix)]
