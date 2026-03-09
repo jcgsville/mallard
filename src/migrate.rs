@@ -4,6 +4,7 @@ use anyhow::{Context, Result, bail};
 use duckdb::Connection;
 
 use crate::{
+    compiler,
     config::Config,
     migration_files::{CommittedMigration, load_committed_migrations},
     migration_state::{
@@ -19,6 +20,10 @@ pub struct MigrateResult {
 }
 
 pub fn run(config: &Config) -> Result<MigrateResult> {
+    run_with_target(config)
+}
+
+pub fn run_with_target(config: &Config) -> Result<MigrateResult> {
     let committed_dir = config.migrations_dir.join("committed");
     let committed = load_committed_migrations(&committed_dir)?;
     ensure_database_parent_dir(&config.database_path)?;
@@ -32,7 +37,7 @@ pub fn run(config: &Config) -> Result<MigrateResult> {
 
     let mut applied_count = 0;
     for migration in committed.iter().skip(applied.len()) {
-        apply_migration(&mut connection, &config.internal_schema, migration)?;
+        apply_migration(&mut connection, config, migration)?;
         applied_count += 1;
     }
 
@@ -84,14 +89,15 @@ fn verify_applied_history(
 
 fn apply_migration(
     connection: &mut Connection,
-    internal_schema: &str,
+    config: &Config,
     migration: &CommittedMigration,
 ) -> Result<()> {
+    let compiled_body = compiler::resolve_placeholders(config, &migration.body)?;
     let transaction = connection.transaction()?;
-    transaction.execute_batch(&migration.body)?;
+    transaction.execute_batch(&compiled_body)?;
     record_applied_migration(
         &transaction,
-        internal_schema,
+        &config.internal_schema,
         &AppliedMigration {
             filename: migration.filename.clone(),
             hash: migration.hash.clone(),

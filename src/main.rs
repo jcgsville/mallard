@@ -1,12 +1,16 @@
 mod commit;
+mod compiler;
 mod config;
+mod hooks;
 mod migrate;
 mod migration_files;
 mod migration_hash;
 mod migration_state;
 mod project;
 mod reset;
+mod run_current;
 mod status;
+mod watch;
 
 use std::env;
 use std::path::PathBuf;
@@ -42,6 +46,35 @@ enum Commands {
     Commit {
         /// Message stored in the committed migration header and filename slug.
         message: String,
+    },
+
+    /// Compile the current migration with includes and placeholders resolved.
+    Compile {
+        /// Optional output path. Prints to stdout when omitted.
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
+
+    /// Replay committed migrations and apply the current migration.
+    Run {
+        /// Target database to use for the run helper.
+        #[arg(long, value_enum, default_value = "shadow")]
+        target: run_current::RunTarget,
+    },
+
+    /// Watch migration inputs and rerun the current migration flow.
+    Watch {
+        /// Target database to use while watching.
+        #[arg(long, value_enum, default_value = "shadow")]
+        target: run_current::RunTarget,
+
+        /// Run a single watch cycle and exit.
+        #[arg(long)]
+        once: bool,
+
+        /// Polling interval in milliseconds.
+        #[arg(long, default_value_t = 1000)]
+        interval_ms: u64,
     },
 
     /// Report pending committed and current migration status.
@@ -95,6 +128,48 @@ fn main() -> Result<()> {
             println!(
                 "Validated against shadow database {}",
                 result.shadow_database_path.display()
+            );
+        }
+        Commands::Compile { output } => {
+            let working_dir = env::current_dir()?;
+            let config = config::Config::discover(&working_dir, cli.config.as_deref())?;
+            let compiled = compiler::compile_current(&config)?;
+
+            if let Some(output) = output {
+                std::fs::write(&output, &compiled)?;
+                println!("Wrote {}", output.display());
+            } else {
+                print!("{compiled}");
+            }
+        }
+        Commands::Run { target } => {
+            let working_dir = env::current_dir()?;
+            let config = config::Config::discover(&working_dir, cli.config.as_deref())?;
+            let result = run_current::run(&config, target)?;
+
+            println!(
+                "Applied current migration to {}",
+                result.database_path.display()
+            );
+        }
+        Commands::Watch {
+            target,
+            once,
+            interval_ms,
+        } => {
+            let working_dir = env::current_dir()?;
+            let config = config::Config::discover(&working_dir, cli.config.as_deref())?;
+            let result = watch::run(
+                &config,
+                target,
+                once,
+                std::time::Duration::from_millis(interval_ms),
+            )?;
+
+            println!(
+                "Completed {} watch cycle(s) against {}",
+                result.cycles,
+                result.last_run.database_path.display()
             );
         }
         Commands::Status => {

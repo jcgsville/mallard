@@ -6,7 +6,9 @@ use std::{
 use anyhow::{Context, Result, bail};
 use duckdb::Connection;
 
-use crate::{config::Config, migrate, migration_files::load_committed_migrations, migration_hash};
+use crate::{
+    compiler, config::Config, migrate, migration_files::load_committed_migrations, migration_hash,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommitResult {
@@ -20,15 +22,17 @@ pub fn run(config: &Config, message: &str) -> Result<CommitResult> {
     let current_migration_path = config.migrations_dir.join("current.sql");
     let current_contents = fs::read_to_string(&current_migration_path)
         .with_context(|| format!("failed to read {}", current_migration_path.display()))?;
-    validate_current_migration(&current_contents)?;
+    let expanded_current =
+        compiler::expand_includes(config, &current_migration_path, &current_contents)?;
+    validate_current_migration(&expanded_current)?;
 
-    validate_against_shadow(config, &current_contents)?;
+    validate_against_shadow(config, &expanded_current)?;
 
     let committed_dir = config.migrations_dir.join("committed");
     let committed = load_committed_migrations(&committed_dir)?;
     let next_version = committed.len() as u32 + 1;
     let previous_hash = committed.last().map(|migration| migration.hash.clone());
-    let hash = migration_hash::calculate(previous_hash.as_deref(), &current_contents);
+    let hash = migration_hash::calculate(previous_hash.as_deref(), &expanded_current);
     let filename = format!(
         "{:06}-{}.sql",
         next_version,
@@ -42,7 +46,7 @@ pub fn run(config: &Config, message: &str) -> Result<CommitResult> {
             &normalized_message,
             previous_hash.as_deref(),
             &hash,
-            &current_contents,
+            &expanded_current,
         ),
     )
     .with_context(|| format!("failed to write {}", committed_path.display()))?;
@@ -81,14 +85,16 @@ fn validate_against_shadow(config: &Config, current_contents: &str) -> Result<()
 
     let mut shadow_config = config.clone();
     shadow_config.database_path = config.shadow_path.clone();
-    migrate::run(&shadow_config)
+    migrate::run_with_target(&shadow_config)
         .context("failed to replay committed migrations into shadow database")?;
+
+    let compiled_current = compiler::resolve_placeholders(config, current_contents)?;
 
     let mut connection = Connection::open(&config.shadow_path)
         .with_context(|| format!("failed to open {}", config.shadow_path.display()))?;
     let transaction = connection.transaction()?;
     transaction
-        .execute_batch(&migration_hash::normalize_body(current_contents))
+        .execute_batch(&migration_hash::normalize_body(&compiled_current))
         .context("current migration failed shadow validation")?;
     transaction.commit()?;
 
