@@ -33,7 +33,10 @@ fn maybe_run_for_state(
 
     match run_current::run(config) {
         Ok(_) => *previous_state = Some(state),
-        Err(error) => eprintln!("error: {error:#}"),
+        Err(error) => {
+            eprintln!("error: {error:#}");
+            *previous_state = Some(state);
+        }
     }
 }
 
@@ -121,7 +124,7 @@ mod tests {
     }
 
     #[test]
-    fn leaves_state_unset_after_failed_run() {
+    fn records_state_after_failed_run() {
         let temp_dir = tempdir().unwrap();
         let config_path = temp_dir.path().join("mallard.toml");
         fs::write(&config_path, "version = 1").unwrap();
@@ -133,10 +136,11 @@ mod tests {
         .unwrap();
 
         let config = Config::load(&config_path).unwrap();
+        let state = sample_state("current.sql");
         let mut previous_state = None;
 
-        maybe_run_for_state(&config, &mut previous_state, sample_state("current.sql"));
+        maybe_run_for_state(&config, &mut previous_state, state.clone());
 
-        assert!(previous_state.is_none());
+        assert_eq!(previous_state, Some(state));
     }
 }
