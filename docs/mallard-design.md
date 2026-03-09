@@ -143,6 +143,7 @@ database_path = "${MALLARD_DB_PATH:-dev.duckdb}"
 shadow_path = "${MALLARD_SHADOW_PATH:-.mallard/shadow.duckdb}"
 migrations_dir = "migrations"
 internal_schema = "mallard"
+manage_metadata = true
 
 [placeholders]
 APP_SCHEMA = "main"
@@ -155,6 +156,7 @@ Rules:
 - placeholder keys are written without a leading `:` in TOML
 - SQL references placeholders with `:NAME`
 - `internal_schema` defaults to `mallard` but may be overridden
+- `manage_metadata` defaults to `true`; when `false`, Mallard requires the metadata schema and table to already exist
 
 Example:
 

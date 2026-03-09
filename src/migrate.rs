@@ -8,7 +8,8 @@ use crate::{
     config::Config,
     migration_files::{CommittedMigration, load_committed_migrations},
     migration_state::{
-        AppliedMigration, ensure_metadata_table, load_applied_migrations, record_applied_migration,
+        AppliedMigration, ensure_metadata_table, load_applied_migrations, metadata_table_exists,
+        record_applied_migration,
     },
 };
 
@@ -27,7 +28,7 @@ pub fn run(config: &Config) -> Result<MigrateResult> {
     let mut connection = Connection::open(&config.database_path)
         .with_context(|| format!("failed to open {}", config.database_path.display()))?;
 
-    ensure_metadata_table(&connection, &config.internal_schema)?;
+    ensure_metadata_for_migrate(&connection, config)?;
     let applied = load_applied_migrations(&connection, &config.internal_schema)?;
     verify_applied_history(&committed, &applied)?;
 
@@ -42,6 +43,19 @@ pub fn run(config: &Config) -> Result<MigrateResult> {
         applied_count,
         total_committed: committed.len(),
     })
+}
+
+fn ensure_metadata_for_migrate(connection: &Connection, config: &Config) -> Result<()> {
+    if config.manage_metadata {
+        ensure_metadata_table(connection, &config.internal_schema)
+    } else if metadata_table_exists(connection, &config.internal_schema)? {
+        Ok(())
+    } else {
+        bail!(
+            "metadata table {}.migrations does not exist and `manage_metadata` is false",
+            config.internal_schema
+        );
+    }
 }
 
 fn ensure_database_parent_dir(path: &std::path::Path) -> Result<()> {
@@ -112,7 +126,7 @@ mod tests {
     use tempfile::tempdir;
 
     use super::run;
-    use crate::{config::Config, migration_hash};
+    use crate::{config::Config, migration_hash, migration_state::ensure_metadata_table};
 
     #[test]
     fn applies_pending_committed_migrations() {
@@ -225,5 +239,62 @@ database_path = "dev.duckdb"
                 .to_string()
                 .contains("applied migration history diverges")
         );
+    }
+
+    #[test]
+    fn requires_existing_metadata_table_when_management_is_disabled() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("mallard.toml");
+        fs::write(
+            &config_path,
+            r#"version = 1
+
+manage_metadata = false
+"#,
+        )
+        .unwrap();
+        fs::create_dir_all(temp_dir.path().join("migrations/committed")).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let error = run(&config).unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("metadata table mallard.migrations does not exist")
+        );
+    }
+
+    #[test]
+    fn uses_existing_metadata_table_when_management_is_disabled() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("mallard.toml");
+        fs::write(
+            &config_path,
+            r#"version = 1
+
+manage_metadata = false
+"#,
+        )
+        .unwrap();
+
+        let committed_dir = temp_dir.path().join("migrations/committed");
+        fs::create_dir_all(&committed_dir).unwrap();
+
+        let body = "create table users (id integer primary key);";
+        let hash = migration_hash::calculate(None, body);
+        fs::write(
+            committed_dir.join("000001-init.sql"),
+            format!("--! Previous: \n--! Hash: {hash}\n--! Message: init\n\n{body}\n"),
+        )
+        .unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let connection = Connection::open(&config.database_path).unwrap();
+        ensure_metadata_table(&connection, &config.internal_schema).unwrap();
+
+        let result = run(&config).unwrap();
+
+        assert_eq!(result.applied_count, 1);
     }
 }

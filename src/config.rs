@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use serde::Deserialize;
 
 const CONFIG_FILE_NAME: &str = "mallard.toml";
@@ -18,6 +18,7 @@ pub struct Config {
     pub shadow_path: PathBuf,
     pub migrations_dir: PathBuf,
     pub internal_schema: String,
+    pub manage_metadata: bool,
     pub placeholders: BTreeMap<String, String>,
 }
 
@@ -102,6 +103,7 @@ impl Config {
             shadow_path,
             migrations_dir,
             internal_schema: raw.internal_schema,
+            manage_metadata: raw.manage_metadata,
             placeholders,
         })
     }
@@ -189,6 +191,8 @@ struct RawConfig {
     migrations_dir: String,
     #[serde(default = "default_internal_schema")]
     internal_schema: String,
+    #[serde(default = "default_manage_metadata")]
+    manage_metadata: bool,
     #[serde(default)]
     placeholders: BTreeMap<String, String>,
 }
@@ -207,6 +211,10 @@ fn default_migrations_dir() -> String {
 
 fn default_internal_schema() -> String {
     "mallard".to_string()
+}
+
+fn default_manage_metadata() -> bool {
+    true
 }
 
 #[cfg(test)]
@@ -248,6 +256,26 @@ migrations_dir = "sql"
         );
         assert_eq!(config.migrations_dir, config_dir.join("sql"));
         assert_eq!(config.internal_schema, "mallard");
+        assert!(config.manage_metadata);
+    }
+
+    #[test]
+    fn allows_disabling_metadata_management() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("mallard.toml");
+
+        fs::write(
+            &config_path,
+            r#"version = 1
+
+manage_metadata = false
+"#,
+        )
+        .unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+
+        assert!(!config.manage_metadata);
     }
 
     #[test]
@@ -326,8 +354,10 @@ internal_schema = "bad-schema"
 
         let error = Config::load(&config_path).unwrap_err();
 
-        assert!(error
-            .to_string()
-            .contains("internal schema must contain only ASCII letters, digits, or underscores"));
+        assert!(
+            error.to_string().contains(
+                "internal schema must contain only ASCII letters, digits, or underscores"
+            )
+        );
     }
 }
