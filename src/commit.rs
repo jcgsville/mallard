@@ -106,7 +106,7 @@ fn validate_against_shadow(config: &Config, current_contents: &str) -> Result<()
 
     let mut shadow_config = config.clone();
     shadow_config.database_path = config.shadow_path.clone();
-    migrate::run_with_target(&shadow_config)
+    migrate::run(&shadow_config)
         .context("failed to replay committed migrations into shadow database")?;
 
     let compiled_current = compiler::resolve_placeholders(config, current_contents)?;

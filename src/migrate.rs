@@ -20,10 +20,6 @@ pub struct MigrateResult {
 }
 
 pub fn run(config: &Config) -> Result<MigrateResult> {
-    run_with_target(config)
-}
-
-pub fn run_with_target(config: &Config) -> Result<MigrateResult> {
     let committed_dir = config.migrations_dir.join("committed");
     let committed = load_committed_migrations(&committed_dir)?;
     ensure_database_parent_dir(&config.database_path)?;

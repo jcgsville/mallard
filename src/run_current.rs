@@ -47,7 +47,7 @@ fn run_on_shadow(config: &Config, compiled_current: &str) -> Result<RunResult> {
 
     let mut shadow_config = config.clone();
     shadow_config.database_path = config.shadow_path.clone();
-    migrate::run_with_target(&shadow_config)?;
+    migrate::run(&shadow_config)?;
 
     let mut connection = Connection::open(&config.shadow_path)
         .with_context(|| format!("failed to open {}", config.shadow_path.display()))?;
