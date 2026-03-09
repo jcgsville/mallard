@@ -61,7 +61,7 @@ mod tests {
         migrate,
         migration_files::CommittedMigration,
         migration_hash,
-        migration_state::{verify_applied_history, AppliedMigration},
+        migration_state::{AppliedMigration, verify_applied_history},
     };
 
     fn committed_migration(
@@ -117,9 +117,11 @@ mod tests {
 
         let error = verify_applied_history(&committed, &applied).unwrap_err();
 
-        assert!(error
-            .to_string()
-            .contains("database has 2 applied migrations but only 1 exist on disk"));
+        assert!(
+            error
+                .to_string()
+                .contains("database has 2 applied migrations but only 1 exist on disk")
+        );
     }
 
     #[test]
@@ -129,9 +131,11 @@ mod tests {
 
         let error = verify_applied_history(&committed, &applied).unwrap_err();
 
-        assert!(error
-            .to_string()
-            .contains("applied migration history diverges at 000001.sql"));
+        assert!(
+            error
+                .to_string()
+                .contains("applied migration history diverges at 000001.sql")
+        );
     }
 
     #[test]

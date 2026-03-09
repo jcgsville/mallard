@@ -38,8 +38,16 @@ pub fn run(config: &Config) -> Result<UncommitResult> {
     }
 
     let restored_current_path = current_migration::overwrite_empty_with_body(config, &latest.body)?;
-    fs::remove_file(&latest.path)
-        .with_context(|| format!("failed to remove {}", latest.path.display()))?;
+    if let Err(error) = fs::remove_file(&latest.path) {
+        fs::write(&restored_current_path, "").with_context(|| {
+            format!(
+                "failed to roll back {} after failing to remove {}",
+                restored_current_path.display(),
+                latest.path.display()
+            )
+        })?;
+        return Err(error).with_context(|| format!("failed to remove {}", latest.path.display()));
+    }
 
     Ok(UncommitResult {
         removed_committed_path: latest.path.clone(),
@@ -50,6 +58,9 @@ pub fn run(config: &Config) -> Result<UncommitResult> {
 #[cfg(test)]
 mod tests {
     use std::fs;
+
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
 
     use tempfile::tempdir;
 
@@ -124,5 +135,48 @@ mod tests {
         let error = run(&config).unwrap_err();
 
         assert!(error.to_string().contains("already been applied"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn clears_current_sql_if_committed_file_removal_fails() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("mallard.toml");
+        fs::write(&config_path, "version = 1").unwrap();
+        let committed_dir = temp_dir.path().join("migrations/committed");
+        fs::create_dir_all(&committed_dir).unwrap();
+        let current_sql = temp_dir.path().join("migrations/current.sql");
+        fs::write(&current_sql, "").unwrap();
+
+        let first_body = "select 1;";
+        let previous_hash = migration_hash::calculate(None, first_body);
+        fs::write(
+            committed_dir.join("000001.sql"),
+            format!("--! Previous: \n--! Hash: {previous_hash}\n\n{first_body}\n"),
+        )
+        .unwrap();
+
+        let body = "alter table users add column email text;";
+        let hash = migration_hash::calculate(Some(&previous_hash), body);
+        let committed_path = committed_dir.join("000002.sql");
+        fs::write(
+            &committed_path,
+            format!("--! Previous: {previous_hash}\n--! Hash: {hash}\n\n{body}\n"),
+        )
+        .unwrap();
+
+        let original_permissions = fs::metadata(&committed_dir).unwrap().permissions();
+        let mut read_only_permissions = original_permissions.clone();
+        read_only_permissions.set_mode(0o555);
+        fs::set_permissions(&committed_dir, read_only_permissions).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let error = run(&config).unwrap_err();
+
+        fs::set_permissions(&committed_dir, original_permissions).unwrap();
+
+        assert!(error.to_string().contains("failed to remove"));
+        assert_eq!(fs::read_to_string(&current_sql).unwrap(), "");
+        assert!(committed_path.exists());
     }
 }

@@ -1,14 +1,10 @@
-use std::{
-    ffi::OsString,
-    fs,
-    path::{Path, PathBuf},
-};
+use std::{fs, path::PathBuf};
 
 use anyhow::{Context, Result, bail};
 use duckdb::Connection;
 
 use crate::{
-    compiler, config::Config, current_migration, migrate,
+    compiler, config::Config, current_migration, db_files, migrate,
     migration_files::load_committed_migrations, migration_hash,
 };
 
@@ -74,8 +70,8 @@ fn current_source_path(current: &current_migration::CurrentMigration) -> PathBuf
 }
 
 fn validate_against_shadow(config: &Config, current_contents: &str) -> Result<()> {
-    remove_if_exists(&config.shadow_path)?;
-    remove_if_exists(&wal_path(&config.shadow_path))?;
+    db_files::remove_if_exists(&config.shadow_path)?;
+    db_files::remove_if_exists(&db_files::wal_path(&config.shadow_path))?;
     if let Some(parent) = config.shadow_path.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("failed to create {}", parent.display()))?;
@@ -83,6 +79,7 @@ fn validate_against_shadow(config: &Config, current_contents: &str) -> Result<()
 
     let mut shadow_config = config.clone();
     shadow_config.database_path = config.shadow_path.clone();
+    shadow_config.manage_metadata = true;
     migrate::run(&shadow_config)
         .context("failed to replay committed migrations into shadow database")?;
 
@@ -108,43 +105,14 @@ fn render_committed_migration(previous_hash: Option<&str>, hash: &str, body: &st
     )
 }
 
-fn remove_if_exists(path: &Path) -> Result<()> {
-    if path.exists() {
-        fs::remove_file(path).with_context(|| format!("failed to remove {}", path.display()))?;
-    }
-    Ok(())
-}
-
-fn wal_path(path: &Path) -> PathBuf {
-    let mut wal_path = OsString::from(path.as_os_str());
-    wal_path.push(".wal");
-    PathBuf::from(wal_path)
-}
-
 #[cfg(test)]
 mod tests {
     use std::fs;
 
     use tempfile::tempdir;
 
-    use super::{run, wal_path};
+    use super::run;
     use crate::{config::Config, migrate, migration_hash};
-
-    #[test]
-    fn wal_path_appends_suffix_without_replacing_existing_extension() {
-        assert_eq!(
-            wal_path(std::path::Path::new("shadow")),
-            std::path::PathBuf::from("shadow.wal")
-        );
-        assert_eq!(
-            wal_path(std::path::Path::new("shadow.db")),
-            std::path::PathBuf::from("shadow.db.wal")
-        );
-        assert_eq!(
-            wal_path(std::path::Path::new("shadow.duckdb")),
-            std::path::PathBuf::from("shadow.duckdb.wal")
-        );
-    }
 
     #[test]
     fn commits_current_migration_and_resets_current_sql() {
@@ -258,6 +226,31 @@ mod tests {
             error
                 .to_string()
                 .contains("current migration failed shadow validation")
+        );
+    }
+
+    #[test]
+    fn commits_successfully_when_manage_metadata_is_disabled_for_main_database() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("mallard.toml");
+        fs::write(&config_path, "version = 1\nmanage_metadata = false\n").unwrap();
+        fs::create_dir_all(temp_dir.path().join("migrations/committed")).unwrap();
+        fs::write(
+            temp_dir.path().join("migrations/current.sql"),
+            "select 1;\n",
+        )
+        .unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let result = run(&config).unwrap();
+
+        assert_eq!(
+            result.committed_path.file_name().unwrap().to_string_lossy(),
+            "000001.sql"
+        );
+        assert_eq!(
+            fs::read_to_string(temp_dir.path().join("migrations/current.sql")).unwrap(),
+            ""
         );
     }
 }

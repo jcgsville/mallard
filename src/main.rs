@@ -2,6 +2,7 @@ mod commit;
 mod compiler;
 mod config;
 mod current_migration;
+mod db_files;
 mod migrate;
 mod migration_files;
 mod migration_hash;
