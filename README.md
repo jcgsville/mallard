@@ -176,8 +176,8 @@ Behavior:
 
 - if `--config` is provided and the file does not exist, Mallard writes the default config there
 - if `--config` is provided and the file already exists, Mallard reuses it
-- without `--config`, Mallard searches upward for an existing `mallard.toml`
-- if no config is found, Mallard creates `mallard.toml` in the current directory
+- without `--config`, Mallard searches upward from the working directory for an existing `mallard.toml`
+- if no config is found, Mallard creates `mallard.toml` in the working directory
 - creates `committed/`, `fixtures/`, and `current.sql` under the configured `migrations_dir`
 
 Example:
@@ -192,8 +192,7 @@ Applies committed migrations to the main database.
 
 Behavior:
 
-- loads committed migrations from `migrations/committed`
-- validates numbering, headers, body, and hash chain
+- loads and validates committed migrations from `migrations/committed`
 - verifies the applied database history matches the committed prefix on disk
 - applies only pending committed migrations, in order, each in its own transaction
 - does not apply the current migration
@@ -234,18 +233,15 @@ mallard commit
 
 ### `mallard uncommit`
 
-Moves the latest unapplied committed migration back into the current migration.
+Moves the latest unapplied, committed migration back into the current migration.
 
 Behavior:
 
-- only operates on the latest committed migration
-- checks the main database metadata if present
 - refuses to uncommit a migration that has already been applied to the main database
-- requires the current migration source to be empty
 - restores the committed SQL body into `current.sql` or `current/<filename>.sql`
 - deletes the committed migration file
 
-This command changes files on disk only. It does not roll back database state.
+This command changes files on disk only. It does not roll back database state. Thus, you should never uncommit a migration that was already applied to a production database.
 
 Example:
 
@@ -272,7 +268,7 @@ mallard compile --output build/current.sql
 
 ### `mallard run [--target <main|shadow>]`
 
-Runs the current migration after bringing the selected target up to date.
+Brings the selected target up to date, and runs the current migration against it. In general, `watch` is better suited for development, but this command can be useful in cases where a one-off run of the current migration is useful.
 
 Flags:
 
@@ -305,10 +301,9 @@ Flags:
 Behavior:
 
 - performs one run immediately on startup
-- watches `current.sql`, `current/`, `committed/`, and `fixtures/`
+- watches `current.sql`, `current/`, `committed/`, and `fixtures/` using polling
 - reruns when file path, size, or modified time changes
 - does not watch `mallard.toml`
-- uses polling, not filesystem events
 
 Examples:
 
