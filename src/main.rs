@@ -1,6 +1,7 @@
 mod commit;
 mod compiler;
 mod config;
+mod current_migration;
 mod hooks;
 mod migrate;
 mod migration_files;
@@ -10,6 +11,7 @@ mod project;
 mod reset;
 mod run_current;
 mod status;
+mod uncommit;
 mod watch;
 
 use std::env;
@@ -47,6 +49,9 @@ enum Commands {
         /// Message stored in the committed migration header and filename slug.
         message: String,
     },
+
+    /// Move the latest unapplied committed migration back into the current migration.
+    Uncommit,
 
     /// Compile the current migration with includes and placeholders resolved.
     Compile {
@@ -121,13 +126,21 @@ fn main() -> Result<()> {
             let result = commit::run(&config, &message)?;
 
             println!("Created {}", result.committed_path.display());
-            println!(
-                "Reset {}",
-                config.migrations_dir.join("current.sql").display()
-            );
+            println!("Reset {}", result.reset_target_path.display());
             println!(
                 "Validated against shadow database {}",
                 result.shadow_database_path.display()
+            );
+        }
+        Commands::Uncommit => {
+            let working_dir = env::current_dir()?;
+            let config = config::Config::discover(&working_dir, cli.config.as_deref())?;
+            let result = uncommit::run(&config)?;
+
+            println!("Removed {}", result.removed_committed_path.display());
+            println!(
+                "Restored current migration at {}",
+                result.restored_current_path.display()
             );
         }
         Commands::Compile { output } => {

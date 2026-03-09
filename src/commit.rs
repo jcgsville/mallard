@@ -7,7 +7,8 @@ use anyhow::{Context, Result, bail};
 use duckdb::Connection;
 
 use crate::{
-    compiler, config::Config, migrate, migration_files::load_committed_migrations, migration_hash,
+    compiler, config::Config, current_migration, migrate,
+    migration_files::load_committed_migrations, migration_hash,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,15 +16,13 @@ pub struct CommitResult {
     pub committed_path: PathBuf,
     pub message: String,
     pub shadow_database_path: PathBuf,
+    pub reset_target_path: PathBuf,
 }
 
 pub fn run(config: &Config, message: &str) -> Result<CommitResult> {
     let normalized_message = normalize_message(message)?;
-    let current_migration_path = config.migrations_dir.join("current.sql");
-    let current_contents = fs::read_to_string(&current_migration_path)
-        .with_context(|| format!("failed to read {}", current_migration_path.display()))?;
-    let expanded_current =
-        compiler::expand_includes(config, &current_migration_path, &current_contents)?;
+    let current = current_migration::load(config)?;
+    let expanded_current = compiler::expand_current(config)?;
     validate_current_migration(&expanded_current)?;
 
     validate_against_shadow(config, &expanded_current)?;
@@ -50,13 +49,13 @@ pub fn run(config: &Config, message: &str) -> Result<CommitResult> {
         ),
     )
     .with_context(|| format!("failed to write {}", committed_path.display()))?;
-    fs::write(&current_migration_path, "")
-        .with_context(|| format!("failed to reset {}", current_migration_path.display()))?;
+    clear_current_migration(&current).context("failed to reset current migration after commit")?;
 
     Ok(CommitResult {
         committed_path,
         message: normalized_message,
         shadow_database_path: config.shadow_path.clone(),
+        reset_target_path: current_source_path(&current),
     })
 }
 
@@ -73,6 +72,28 @@ fn validate_current_migration(contents: &str) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn clear_current_migration(current: &current_migration::CurrentMigration) -> Result<()> {
+    match &current.mode {
+        current_migration::CurrentMode::File { path } => {
+            fs::write(path, "").with_context(|| format!("failed to reset {}", path.display()))?;
+        }
+        current_migration::CurrentMode::Directory { .. } => {
+            for part in &current.parts {
+                fs::remove_file(&part.path)
+                    .with_context(|| format!("failed to remove {}", part.path.display()))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn current_source_path(current: &current_migration::CurrentMigration) -> PathBuf {
+    match &current.mode {
+        current_migration::CurrentMode::File { path } => path.clone(),
+        current_migration::CurrentMode::Directory { path } => path.clone(),
+    }
 }
 
 fn validate_against_shadow(config: &Config, current_contents: &str) -> Result<()> {

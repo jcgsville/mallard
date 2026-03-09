@@ -4,25 +4,35 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
-use crate::config::Config;
+use crate::{config::Config, current_migration};
 
 pub fn compile_current(config: &Config) -> Result<String> {
-    let expanded = expand_current(config)?;
-    resolve_placeholders(config, &expanded)
+    let current = current_migration::load(config)?;
+    let mut compiled = String::new();
+    for part in current.parts {
+        compiled.push_str(&compile_source(config, &part.path, &part.contents)?);
+    }
+    Ok(compiled)
 }
 
 pub fn expand_current(config: &Config) -> Result<String> {
-    let current_path = config.migrations_dir.join("current.sql");
-    let raw = fs::read_to_string(&current_path)
-        .with_context(|| format!("failed to read {}", current_path.display()))?;
-    expand_includes(config, &current_path, &raw)
+    let current = current_migration::load(config)?;
+    let mut expanded = String::new();
+    for part in current.parts {
+        expanded.push_str(&expand_includes(config, &part.path, &part.contents)?);
+    }
+    Ok(expanded)
 }
 
 pub fn compile_file(config: &Config, path: &Path) -> Result<String> {
     let raw =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
+    compile_source(config, path, &raw)
+}
+
+pub fn compile_source(config: &Config, path: &Path, raw: &str) -> Result<String> {
     let expanded = expand_includes(config, path, &raw)?;
     resolve_placeholders(config, &expanded)
 }

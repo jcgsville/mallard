@@ -1,10 +1,9 @@
-use std::fs;
-
 use anyhow::{Context, Result, bail};
 use duckdb::Connection;
 
 use crate::{
     config::Config,
+    current_migration,
     migration_files::{CommittedMigration, load_committed_migrations},
     migration_state::{AppliedMigration, load_applied_migrations_if_present},
 };
@@ -31,9 +30,7 @@ impl StatusResult {
 pub fn run(config: &Config) -> Result<StatusResult> {
     let committed_dir = config.migrations_dir.join("committed");
     let committed = load_committed_migrations(&committed_dir)?;
-    let current_migration = config.migrations_dir.join("current.sql");
-    let current_contents = fs::read_to_string(&current_migration)
-        .with_context(|| format!("failed to read {}", current_migration.display()))?;
+    let current = current_migration::load(config)?;
 
     let applied = if config.database_path.exists() {
         let connection = Connection::open(&config.database_path)
@@ -47,7 +44,7 @@ pub fn run(config: &Config) -> Result<StatusResult> {
 
     Ok(StatusResult {
         pending_committed: committed.len() > applied.len(),
-        current_migration_has_changes: !current_contents.trim().is_empty(),
+        current_migration_has_changes: !current.is_empty(),
     })
 }
 
