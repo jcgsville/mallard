@@ -21,6 +21,11 @@ pub struct Config {
 }
 
 impl Config {
+    pub fn discover(start_dir: &Path, explicit_path: Option<&Path>) -> Result<Self> {
+        let path = Self::discover_path(start_dir, explicit_path)?;
+        Self::load(&path)
+    }
+
     pub fn discover_path(start_dir: &Path, explicit_path: Option<&Path>) -> Result<PathBuf> {
         if let Some(explicit_path) = explicit_path {
             let resolved = if explicit_path.is_absolute() {
@@ -80,6 +85,7 @@ impl Config {
         let database_path = resolve_path(config_dir, &interpolate_env(&raw.database.path)?);
         let shadow_path = resolve_path(config_dir, &interpolate_env(&raw.shadow.path)?);
         let migrations_dir = resolve_path(config_dir, &interpolate_env(&raw.migrations.dir)?);
+        validate_identifier(&raw.migrations.internal_schema, "internal schema")?;
 
         let mut placeholders = BTreeMap::new();
         for (key, value) in raw.placeholders {
@@ -96,6 +102,23 @@ impl Config {
             placeholders,
         })
     }
+}
+
+fn validate_identifier(value: &str, label: &str) -> Result<()> {
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        bail!("{label} cannot be empty")
+    };
+
+    if !(first == '_' || first.is_ascii_alphabetic()) {
+        bail!("{label} must start with an ASCII letter or underscore: `{value}`");
+    }
+
+    if !chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric()) {
+        bail!("{label} must contain only ASCII letters, digits, or underscores: `{value}`");
+    }
+
+    Ok(())
 }
 
 fn resolve_path(base_dir: &Path, value: &str) -> PathBuf {
@@ -313,5 +336,41 @@ path = "${MALLARD_SHADOW_PATH:-shadow/default.duckdb}"
         let discovered = Config::discover_path(&nested, None).unwrap();
 
         assert_eq!(discovered, config_path);
+    }
+
+    #[test]
+    fn loads_discovered_config() {
+        let temp_dir = tempdir().unwrap();
+        let nested = temp_dir.path().join("a/b/c");
+        fs::create_dir_all(&nested).unwrap();
+        let config_path = temp_dir.path().join("mallard.toml");
+        fs::write(&config_path, "version = 1").unwrap();
+
+        let config = Config::discover(&nested, None).unwrap();
+
+        assert_eq!(config.config_path, config_path);
+    }
+
+    #[test]
+    fn rejects_invalid_internal_schema_names() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("mallard.toml");
+        fs::write(
+            &config_path,
+            r#"version = 1
+
+[migrations]
+internal_schema = "bad-schema"
+"#,
+        )
+        .unwrap();
+
+        let error = Config::load(&config_path).unwrap_err();
+
+        assert!(
+            error.to_string().contains(
+                "internal schema must contain only ASCII letters, digits, or underscores"
+            )
+        );
     }
 }

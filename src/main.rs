@@ -1,6 +1,11 @@
 mod config;
+mod migrate;
+mod migration_files;
+mod migration_hash;
+mod migration_state;
 mod project;
 
+use std::env;
 use std::path::PathBuf;
 
 use anyhow::Result;
@@ -26,6 +31,9 @@ struct Cli {
 enum Commands {
     /// Initialize a Mallard project.
     Init,
+
+    /// Apply committed migrations to the target database.
+    Migrate,
 }
 
 fn main() -> Result<()> {
@@ -43,6 +51,17 @@ fn main() -> Result<()> {
 
             println!("Prepared {}", result.committed_dir.display());
             println!("Prepared {}", result.current_migration.display());
+        }
+        Commands::Migrate => {
+            let working_dir = env::current_dir()?;
+            let config = config::Config::discover(&working_dir, cli.config.as_deref())?;
+            let result = migrate::run(&config)?;
+
+            println!(
+                "Applied {} committed migration(s) to {}",
+                result.applied_count,
+                result.database_path.display()
+            );
         }
     }
 
