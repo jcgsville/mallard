@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{anyhow, bail, Context, Result};
 use serde::Deserialize;
 
 const CONFIG_FILE_NAME: &str = "mallard.toml";
@@ -13,6 +13,7 @@ const CONFIG_FILE_NAME: &str = "mallard.toml";
 pub struct Config {
     pub version: u32,
     pub config_path: PathBuf,
+    pub project_root: PathBuf,
     pub database_path: PathBuf,
     pub shadow_path: PathBuf,
     pub migrations_dir: PathBuf,
@@ -65,9 +66,10 @@ impl Config {
             env::current_dir()?.join(path)
         };
 
-        let config_dir = config_path
+        let project_root = config_path
             .parent()
-            .ok_or_else(|| anyhow!("config path has no parent: {}", config_path.display()))?;
+            .ok_or_else(|| anyhow!("config path has no parent: {}", config_path.display()))?
+            .to_path_buf();
 
         let contents = fs::read_to_string(&config_path)
             .with_context(|| format!("failed to read {}", config_path.display()))?;
@@ -82,9 +84,9 @@ impl Config {
             );
         }
 
-        let database_path = resolve_path(config_dir, &interpolate_env(&raw.database_path)?);
-        let shadow_path = resolve_path(config_dir, &interpolate_env(&raw.shadow_path)?);
-        let migrations_dir = resolve_path(config_dir, &interpolate_env(&raw.migrations_dir)?);
+        let database_path = resolve_path(&project_root, &interpolate_env(&raw.database_path)?);
+        let shadow_path = resolve_path(&project_root, &interpolate_env(&raw.shadow_path)?);
+        let migrations_dir = resolve_path(&project_root, &interpolate_env(&raw.migrations_dir)?);
         validate_identifier(&raw.internal_schema, "internal schema")?;
 
         let mut placeholders = BTreeMap::new();
@@ -95,6 +97,7 @@ impl Config {
         Ok(Self {
             version: raw.version,
             config_path,
+            project_root,
             database_path,
             shadow_path,
             migrations_dir,
@@ -237,6 +240,7 @@ migrations_dir = "sql"
 
         let config = Config::load(&config_path).unwrap();
 
+        assert_eq!(config.project_root, config_dir);
         assert_eq!(config.database_path, config_dir.join("db/dev.duckdb"));
         assert_eq!(
             config.shadow_path,
@@ -304,6 +308,7 @@ shadow_path = "${MALLARD_SHADOW_PATH:-shadow/default.duckdb}"
         let config = Config::discover(&nested, None).unwrap();
 
         assert_eq!(config.config_path, config_path);
+        assert_eq!(config.project_root, temp_dir.path());
     }
 
     #[test]
@@ -321,10 +326,8 @@ internal_schema = "bad-schema"
 
         let error = Config::load(&config_path).unwrap_err();
 
-        assert!(
-            error.to_string().contains(
-                "internal schema must contain only ASCII letters, digits, or underscores"
-            )
-        );
+        assert!(error
+            .to_string()
+            .contains("internal schema must contain only ASCII letters, digits, or underscores"));
     }
 }

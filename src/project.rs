@@ -33,10 +33,7 @@ pub fn init(explicit_config_path: Option<&Path>) -> Result<InitResult> {
     init_in_dir(&working_dir, explicit_config_path)
 }
 
-fn init_in_dir(
-    working_dir: &Path,
-    explicit_config_path: Option<&Path>,
-) -> Result<InitResult> {
+fn init_in_dir(working_dir: &Path, explicit_config_path: Option<&Path>) -> Result<InitResult> {
     let (config_path, config_created) =
         resolve_init_config_path(working_dir, explicit_config_path)?;
 
@@ -52,11 +49,7 @@ fn init_in_dir(
     ensure_file(&current_migration)?;
 
     Ok(InitResult {
-        project_root: config
-            .config_path
-            .parent()
-            .unwrap_or(working_dir)
-            .to_path_buf(),
+        project_root: config.project_root.clone(),
         config_path: config.config_path,
         config_created,
         migrations_dir: config.migrations_dir,
@@ -127,7 +120,7 @@ fn ensure_file(path: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{DEFAULT_CONFIG, init_in_dir};
+    use super::{init_in_dir, DEFAULT_CONFIG};
     use std::fs;
     use tempfile::tempdir;
 

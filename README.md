@@ -23,6 +23,7 @@ Prepared /path/to/project/migrations/current.sql
 This bootstraps the project layout and writes a default `mallard.toml` with:
 
 - config discovery via `mallard.toml`
+- project root anchored to the discovered config location
 - `${VAR}` and `${VAR:-default}` environment interpolation
 - a `migrations/current.sql` authoring file from day one
 

@@ -118,6 +118,10 @@ Config discovery order:
 1. `--config <path>`
 2. nearest `mallard.toml` walking upward from the working directory
 
+The directory containing the selected config file becomes the project root.
+Mallard should resolve relative paths and place generated migration files from
+that root, not from the invocation directory.
+
 For now, Mallard supports only `mallard.toml`.
 
 ## Why TOML
