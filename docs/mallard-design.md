@@ -209,7 +209,6 @@ Reason:
 - `compile`
 - `run`
 - placeholders
-- hooks/actions
 - include support via `fixtures/`
 
 ### Phase 4
@@ -487,19 +486,19 @@ Rules:
 - Mallard does not auto-escape values
 - placeholders are resolved before execution
 
-## Actions and Hooks
+## Actions
 
 Graphile has rich actions.
 
-Mallard should defer most of this until later.
+Mallard should defer this until there is a concrete need.
 
 If and when added, keep them DuckDB-native:
 
-- SQL hook files
-- command hooks
+- SQL-first extension points
+- command-driven actions when there is a clear need
 - target selection such as `main`, `shadow`, or both
 
-Do not add PostgreSQL-shaped hooks such as root-only hooks in v1.
+Do not add PostgreSQL-shaped lifecycle callbacks such as root-only entry points in v1.
 
 ## Recommended Internal Validation Rules
 
@@ -582,7 +581,6 @@ Recommended crates to add later:
 - `watch`
 - includes
 - placeholders
-- hooks
 - compile and run helpers
 
 ### Milestone 6: advanced local-history tooling
@@ -594,4 +592,4 @@ Recommended crates to add later:
 ## Open Questions
 
 1. How strict should Mallard be about formatting and comments in `current.sql` before `commit` exists?
-2. What is the minimal useful hook model once actions are introduced?
+2. If actions ever return, what is the minimal useful model for Mallard?

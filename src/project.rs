@@ -28,7 +28,6 @@ pub struct InitResult {
     pub committed_dir: PathBuf,
     pub current_migration: PathBuf,
     pub fixtures_dir: PathBuf,
-    pub hooks_dir: PathBuf,
 }
 
 pub fn init(explicit_config_path: Option<&Path>) -> Result<InitResult> {
@@ -40,14 +39,11 @@ pub fn init(explicit_config_path: Option<&Path>) -> Result<InitResult> {
     let committed_dir = config.migrations_dir.join("committed");
     let current_migration = config.migrations_dir.join("current.sql");
     let fixtures_dir = config.migrations_dir.join("fixtures");
-    let hooks_dir = config.migrations_dir.join("hooks");
 
     fs::create_dir_all(&committed_dir)
         .with_context(|| format!("failed to create {}", committed_dir.display()))?;
     fs::create_dir_all(&fixtures_dir)
         .with_context(|| format!("failed to create {}", fixtures_dir.display()))?;
-    fs::create_dir_all(&hooks_dir)
-        .with_context(|| format!("failed to create {}", hooks_dir.display()))?;
     ensure_file(&current_migration)?;
 
     Ok(InitResult {
@@ -62,7 +58,6 @@ pub fn init(explicit_config_path: Option<&Path>) -> Result<InitResult> {
         committed_dir,
         current_migration,
         fixtures_dir,
-        hooks_dir,
     })
 }
 
@@ -127,7 +122,7 @@ fn ensure_file(path: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{DEFAULT_CONFIG, init};
+    use super::{init, DEFAULT_CONFIG};
     use std::{env, fs};
     use tempfile::tempdir;
 
@@ -163,7 +158,6 @@ mod tests {
         );
         assert!(temp_dir.path().join("migrations/committed").is_dir());
         assert!(temp_dir.path().join("migrations/fixtures").is_dir());
-        assert!(temp_dir.path().join("migrations/hooks").is_dir());
         assert!(temp_dir.path().join("migrations/current.sql").is_file());
     }
 
@@ -186,7 +180,6 @@ migrations_dir = "db/migrations"
         assert!(!result.config_created);
         assert!(temp_dir.path().join("db/migrations/committed").is_dir());
         assert!(temp_dir.path().join("db/migrations/fixtures").is_dir());
-        assert!(temp_dir.path().join("db/migrations/hooks").is_dir());
         assert!(temp_dir.path().join("db/migrations/current.sql").is_file());
     }
 
@@ -205,7 +198,6 @@ migrations_dir = "db/migrations"
         assert_eq!(result.config_path, temp_dir.path().join("mallard.toml"));
         assert!(temp_dir.path().join("migrations/committed").is_dir());
         assert!(temp_dir.path().join("migrations/fixtures").is_dir());
-        assert!(temp_dir.path().join("migrations/hooks").is_dir());
         assert!(temp_dir.path().join("migrations/current.sql").is_file());
         assert!(!nested_dir.join("mallard.toml").exists());
         assert!(!nested_dir.join("migrations").exists());

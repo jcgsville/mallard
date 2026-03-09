@@ -2,7 +2,6 @@ mod commit;
 mod compiler;
 mod config;
 mod current_migration;
-mod hooks;
 mod migrate;
 mod migration_files;
 mod migration_hash;

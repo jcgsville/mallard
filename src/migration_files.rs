@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 
 use crate::migration_hash;
 
@@ -269,11 +269,9 @@ mod tests {
 
         let error = load_committed_migrations(&committed_dir).unwrap_err();
 
-        assert!(
-            error
-                .to_string()
-                .contains("expected committed migration 000001")
-        );
+        assert!(error
+            .to_string()
+            .contains("expected committed migration 000001"));
     }
 
     #[test]

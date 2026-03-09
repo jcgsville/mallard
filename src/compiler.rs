@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 
 use crate::{config::Config, current_migration};
 
@@ -24,12 +24,6 @@ pub fn expand_current(config: &Config) -> Result<String> {
         expanded.push_str(&expand_includes(config, &part.path, &part.contents)?);
     }
     Ok(expanded)
-}
-
-pub fn compile_file(config: &Config, path: &Path) -> Result<String> {
-    let raw =
-        fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
-    compile_source(config, path, &raw)
 }
 
 pub fn compile_source(config: &Config, path: &Path, raw: &str) -> Result<String> {

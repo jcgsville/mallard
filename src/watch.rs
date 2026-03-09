@@ -58,7 +58,6 @@ fn collect_watch_state(config: &Config) -> Result<Vec<FileStamp>> {
         config.migrations_dir.join("current"),
         config.migrations_dir.join("committed"),
         config.migrations_dir.join("fixtures"),
-        config.migrations_dir.join("hooks"),
     ];
     let mut stamps = Vec::new();
 
@@ -107,7 +106,6 @@ mod tests {
         fs::write(&config_path, "version = 1").unwrap();
         fs::create_dir_all(temp_dir.path().join("migrations/committed")).unwrap();
         fs::create_dir_all(temp_dir.path().join("migrations/fixtures")).unwrap();
-        fs::create_dir_all(temp_dir.path().join("migrations/hooks")).unwrap();
         fs::write(
             temp_dir.path().join("migrations/current.sql"),
             "select 1;\n",

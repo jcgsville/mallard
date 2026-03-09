@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use duckdb::Connection;
 
 use crate::{
@@ -263,17 +263,13 @@ mod tests {
         let config = Config::load(&config_path).unwrap();
         let error = run(&config, "Bad current").unwrap_err();
 
-        assert!(
-            error
-                .to_string()
-                .contains("current migration must not contain committed migration headers")
-        );
-        assert!(
-            fs::read_dir(temp_dir.path().join("migrations/committed"))
-                .unwrap()
-                .next()
-                .is_none()
-        );
+        assert!(error
+            .to_string()
+            .contains("current migration must not contain committed migration headers"));
+        assert!(fs::read_dir(temp_dir.path().join("migrations/committed"))
+            .unwrap()
+            .next()
+            .is_none());
     }
 
     #[test]
@@ -291,10 +287,8 @@ mod tests {
         let config = Config::load(&config_path).unwrap();
         let error = run(&config, "Broken migration").unwrap_err();
 
-        assert!(
-            error
-                .to_string()
-                .contains("current migration failed shadow validation")
-        );
+        assert!(error
+            .to_string()
+            .contains("current migration failed shadow validation"));
     }
 }

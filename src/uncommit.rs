@@ -1,6 +1,6 @@
 use std::fs;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use duckdb::Connection;
 
 use crate::{
