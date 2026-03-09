@@ -1,10 +1,10 @@
 use std::{
     collections::BTreeMap,
-    env, fs,
+    env, fmt, fs,
     path::{Path, PathBuf},
 };
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{anyhow, bail, Context, Result};
 use serde::Deserialize;
 
 const CONFIG_FILE_NAME: &str = "mallard.toml";
@@ -17,9 +17,33 @@ pub struct Config {
     pub database_path: PathBuf,
     pub shadow_path: PathBuf,
     pub migrations_dir: PathBuf,
-    pub internal_schema: String,
+    pub internal_schema: SqlIdentifier,
     pub manage_metadata: bool,
     pub placeholders: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SqlIdentifier(String);
+
+impl SqlIdentifier {
+    pub fn parse(value: &str, label: &str) -> Result<Self> {
+        validate_identifier(value, label)?;
+        Ok(Self(value.to_string()))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn quoted(&self) -> String {
+        format!("\"{}\"", self.0.replace('"', "\"\""))
+    }
+}
+
+impl fmt::Display for SqlIdentifier {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
 }
 
 impl Config {
@@ -88,7 +112,7 @@ impl Config {
         let database_path = resolve_path(&project_root, &interpolate_env(&raw.database_path)?);
         let shadow_path = resolve_path(&project_root, &interpolate_env(&raw.shadow_path)?);
         let migrations_dir = resolve_path(&project_root, &interpolate_env(&raw.migrations_dir)?);
-        validate_identifier(&raw.internal_schema, "internal schema")?;
+        let internal_schema = SqlIdentifier::parse(&raw.internal_schema, "internal schema")?;
 
         let mut placeholders = BTreeMap::new();
         for (key, value) in raw.placeholders {
@@ -102,7 +126,7 @@ impl Config {
             database_path,
             shadow_path,
             migrations_dir,
-            internal_schema: raw.internal_schema,
+            internal_schema,
             manage_metadata: raw.manage_metadata,
             placeholders,
         })
@@ -255,7 +279,7 @@ migrations_dir = "sql"
             config_dir.join(".mallard/shadow.duckdb")
         );
         assert_eq!(config.migrations_dir, config_dir.join("sql"));
-        assert_eq!(config.internal_schema, "mallard");
+        assert_eq!(config.internal_schema.as_str(), "mallard");
         assert!(config.manage_metadata);
     }
 
@@ -354,10 +378,8 @@ internal_schema = "bad-schema"
 
         let error = Config::load(&config_path).unwrap_err();
 
-        assert!(
-            error.to_string().contains(
-                "internal schema must contain only ASCII letters, digits, or underscores"
-            )
-        );
+        assert!(error
+            .to_string()
+            .contains("internal schema must contain only ASCII letters, digits, or underscores"));
     }
 }
