@@ -18,7 +18,7 @@ pub fn expand_current(config: &Config) -> Result<String> {
     expand_includes(config, &current.path, &current.contents)
 }
 
-pub fn compile_source(config: &Config, path: &Path, raw: &str) -> Result<String> {
+fn compile_source(config: &Config, path: &Path, raw: &str) -> Result<String> {
     let expanded = expand_includes(config, path, raw)?;
     resolve_placeholders(config, &expanded)
 }

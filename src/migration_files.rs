@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 use crate::migration_hash;
 
@@ -147,6 +147,9 @@ fn parse_contents(filename: &str, contents: &str) -> Result<ParsedMigrationConte
             let value = value.trim();
             match key.trim() {
                 "Previous" => {
+                    if previous_hash.is_some() {
+                        bail!("duplicate Previous header in {filename}");
+                    }
                     if !value.is_empty() && !migration_hash::is_valid_hash(value) {
                         bail!("invalid previous hash in {filename}: {value}");
                     }
@@ -157,6 +160,9 @@ fn parse_contents(filename: &str, contents: &str) -> Result<ParsedMigrationConte
                     };
                 }
                 "Hash" => {
+                    if hash.is_some() {
+                        bail!("duplicate Hash header in {filename}");
+                    }
                     if !migration_hash::is_valid_hash(value) {
                         bail!("invalid hash in {filename}: {value}");
                     }
@@ -264,9 +270,11 @@ mod tests {
 
         let error = load_committed_migrations(&committed_dir).unwrap_err();
 
-        assert!(error
-            .to_string()
-            .contains("expected committed migration 000001"));
+        assert!(
+            error
+                .to_string()
+                .contains("expected committed migration 000001")
+        );
     }
 
     #[test]
@@ -301,9 +309,11 @@ mod tests {
 
         let error = load_committed_migrations(&committed_dir).unwrap_err();
 
-        assert!(error
-            .to_string()
-            .contains("first committed migration 000001.sql"));
+        assert!(
+            error
+                .to_string()
+                .contains("first committed migration 000001.sql")
+        );
     }
 
     #[test]
@@ -322,9 +332,59 @@ mod tests {
 
         let error = load_committed_migrations(&committed_dir).unwrap_err();
 
-        assert!(error
-            .to_string()
-            .contains("must be contiguous and followed by a blank line"));
+        assert!(
+            error
+                .to_string()
+                .contains("must be contiguous and followed by a blank line")
+        );
+    }
+
+    #[test]
+    fn rejects_duplicate_hash_headers() {
+        let temp_dir = tempdir().unwrap();
+        let committed_dir = temp_dir.path().join("committed");
+        fs::create_dir_all(&committed_dir).unwrap();
+        let body = "select 1;";
+        let first_hash = "a".repeat(64);
+        let second_hash = migration_hash::calculate(None, body);
+        fs::write(
+            committed_dir.join("000001.sql"),
+            format!("--! Previous: \n--! Hash: {first_hash}\n--! Hash: {second_hash}\n\n{body}\n"),
+        )
+        .unwrap();
+
+        let error = load_committed_migrations(&committed_dir).unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("duplicate Hash header in 000001.sql")
+        );
+    }
+
+    #[test]
+    fn rejects_duplicate_previous_headers() {
+        let temp_dir = tempdir().unwrap();
+        let committed_dir = temp_dir.path().join("committed");
+        fs::create_dir_all(&committed_dir).unwrap();
+        let body = "select 1;";
+        let previous_hash = "a".repeat(64);
+        let hash = migration_hash::calculate(Some(&previous_hash), body);
+        fs::write(
+            committed_dir.join("000001.sql"),
+            format!(
+                "--! Previous: {previous_hash}\n--! Previous: {previous_hash}\n--! Hash: {hash}\n\n{body}\n"
+            ),
+        )
+        .unwrap();
+
+        let error = load_committed_migrations(&committed_dir).unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("duplicate Previous header in 000001.sql")
+        );
     }
 
     #[test]

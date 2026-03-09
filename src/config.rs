@@ -263,7 +263,9 @@ mod tests {
     };
     use tempfile::tempdir;
 
-    // All tests that mutate process environment variables must hold this lock.
+    // NOTE: This only serializes env mutation within this module's tests.
+    // Tests elsewhere should avoid relying on ambient MALLARD_* vars or use a
+    // compatible shared lock before mutating process environment.
     static ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
     #[test]

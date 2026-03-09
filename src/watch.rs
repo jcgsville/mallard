@@ -35,6 +35,7 @@ fn maybe_run_for_state(
         Ok(_) => *previous_state = Some(state),
         Err(error) => {
             eprintln!("error: {error:#}");
+            // Intentionally require a file change before retrying a failed run.
             *previous_state = Some(state);
         }
     }
