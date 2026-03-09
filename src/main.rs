@@ -1,3 +1,4 @@
+mod commit;
 mod config;
 mod migrate;
 mod migration_files;
@@ -37,6 +38,12 @@ enum Commands {
     /// Apply committed migrations to the target database.
     Migrate,
 
+    /// Commit the current migration into the committed sequence.
+    Commit {
+        /// Message stored in the committed migration header and filename slug.
+        message: String,
+    },
+
     /// Report pending committed and current migration status.
     Status,
 
@@ -73,6 +80,21 @@ fn main() -> Result<()> {
                 "Applied {} committed migration(s) to {}",
                 result.applied_count,
                 result.database_path.display()
+            );
+        }
+        Commands::Commit { message } => {
+            let working_dir = env::current_dir()?;
+            let config = config::Config::discover(&working_dir, cli.config.as_deref())?;
+            let result = commit::run(&config, &message)?;
+
+            println!("Created {}", result.committed_path.display());
+            println!(
+                "Reset {}",
+                config.migrations_dir.join("current.sql").display()
+            );
+            println!(
+                "Validated against shadow database {}",
+                result.shadow_database_path.display()
             );
         }
         Commands::Status => {
