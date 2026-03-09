@@ -1,4 +1,5 @@
 use std::{
+    ffi::OsString,
     fs,
     path::{Path, PathBuf},
 };
@@ -74,7 +75,7 @@ fn current_source_path(current: &current_migration::CurrentMigration) -> PathBuf
 
 fn validate_against_shadow(config: &Config, current_contents: &str) -> Result<()> {
     remove_if_exists(&config.shadow_path)?;
-    remove_if_exists(&config.shadow_path.with_extension("duckdb.wal"))?;
+    remove_if_exists(&wal_path(&config.shadow_path))?;
     if let Some(parent) = config.shadow_path.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("failed to create {}", parent.display()))?;
@@ -114,14 +115,36 @@ fn remove_if_exists(path: &Path) -> Result<()> {
     Ok(())
 }
 
+fn wal_path(path: &Path) -> PathBuf {
+    let mut wal_path = OsString::from(path.as_os_str());
+    wal_path.push(".wal");
+    PathBuf::from(wal_path)
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
 
     use tempfile::tempdir;
 
-    use super::run;
+    use super::{run, wal_path};
     use crate::{config::Config, migrate, migration_hash};
+
+    #[test]
+    fn wal_path_appends_suffix_without_replacing_existing_extension() {
+        assert_eq!(
+            wal_path(std::path::Path::new("shadow")),
+            std::path::PathBuf::from("shadow.wal")
+        );
+        assert_eq!(
+            wal_path(std::path::Path::new("shadow.db")),
+            std::path::PathBuf::from("shadow.db.wal")
+        );
+        assert_eq!(
+            wal_path(std::path::Path::new("shadow.duckdb")),
+            std::path::PathBuf::from("shadow.duckdb.wal")
+        );
+    }
 
     #[test]
     fn commits_current_migration_and_resets_current_sql() {

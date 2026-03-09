@@ -13,10 +13,16 @@ pub fn run(config: &Config, interval: Duration) -> Result<()> {
     let mut previous_state: Option<Vec<FileStamp>> = None;
 
     loop {
-        let state = collect_watch_state(config)?;
-        if previous_state.as_ref() != Some(&state) {
-            run_current::run(config)?;
-            previous_state = Some(state);
+        match collect_watch_state(config) {
+            Ok(state) => {
+                if previous_state.as_ref() != Some(&state) {
+                    if let Err(error) = run_current::run(config) {
+                        eprintln!("error: {error:#}");
+                    }
+                    previous_state = Some(state);
+                }
+            }
+            Err(error) => eprintln!("error: {error:#}"),
         }
 
         thread::sleep(interval);

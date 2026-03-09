@@ -1,7 +1,7 @@
-use anyhow::Result;
-use duckdb::{params, Connection};
+use anyhow::{Result, bail};
+use duckdb::{Connection, params};
 
-use crate::config::SqlIdentifier;
+use crate::{config::SqlIdentifier, migration_files::CommittedMigration};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppliedMigration {
@@ -91,15 +91,44 @@ pub fn record_applied_migration(
     Ok(())
 }
 
+pub fn verify_applied_history(
+    committed: &[CommittedMigration],
+    applied: &[AppliedMigration],
+) -> Result<()> {
+    if applied.len() > committed.len() {
+        bail!(
+            "database has {} applied migrations but only {} exist on disk",
+            applied.len(),
+            committed.len()
+        );
+    }
+
+    for (index, applied_migration) in applied.iter().enumerate() {
+        let disk_migration = &committed[index];
+        if applied_migration.filename != disk_migration.filename
+            || applied_migration.hash != disk_migration.hash
+            || applied_migration.previous_hash != disk_migration.previous_hash
+        {
+            bail!(
+                "applied migration history diverges at {}",
+                applied_migration.filename
+            );
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use duckdb::Connection;
 
     use super::{
-        ensure_metadata_storage, load_applied_migrations, load_applied_migrations_if_present,
-        metadata_table_exists, record_applied_migration, AppliedMigration,
+        AppliedMigration, ensure_metadata_storage, load_applied_migrations,
+        load_applied_migrations_if_present, metadata_table_exists, record_applied_migration,
+        verify_applied_history,
     };
-    use crate::config::SqlIdentifier;
+    use crate::{config::SqlIdentifier, migration_files::CommittedMigration};
 
     #[test]
     fn creates_and_reads_metadata_rows() {
@@ -129,8 +158,43 @@ mod tests {
         let schema = SqlIdentifier::parse("mallard", "schema").unwrap();
 
         assert!(!metadata_table_exists(&connection, &schema).unwrap());
-        assert!(load_applied_migrations_if_present(&connection, &schema)
-            .unwrap()
-            .is_empty());
+        assert!(
+            load_applied_migrations_if_present(&connection, &schema)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    fn committed_migration(
+        version: u32,
+        filename: &str,
+        previous_hash: Option<&str>,
+        hash: &str,
+    ) -> CommittedMigration {
+        CommittedMigration {
+            version,
+            filename: filename.to_string(),
+            path: filename.into(),
+            previous_hash: previous_hash.map(str::to_string),
+            hash: hash.to_string(),
+            body: format!("-- body for {filename}"),
+        }
+    }
+
+    #[test]
+    fn verifies_applied_history_against_committed_prefix() {
+        let first_hash = "a".repeat(64);
+        let second_hash = "b".repeat(64);
+        let committed = vec![
+            committed_migration(1, "000001.sql", None, &first_hash),
+            committed_migration(2, "000002.sql", Some(&first_hash), &second_hash),
+        ];
+        let applied = vec![AppliedMigration {
+            filename: "000001.sql".to_string(),
+            previous_hash: None,
+            hash: first_hash,
+        }];
+
+        verify_applied_history(&committed, &applied).unwrap();
     }
 }

@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 use crate::migration_hash;
 
@@ -121,13 +121,10 @@ fn parse_contents(filename: &str, contents: &str) -> Result<ParsedMigrationConte
     let mut hash = None;
     let mut body_start = 0usize;
     let mut saw_header = false;
+    let mut offset = 0usize;
 
-    for (index, line) in normalized.lines().enumerate() {
-        let offset = normalized
-            .lines()
-            .take(index + 1)
-            .map(|segment| segment.len() + 1)
-            .sum::<usize>();
+    for line in normalized.lines() {
+        offset += line.len() + 1;
 
         if let Some(header) = line.strip_prefix("--! ") {
             saw_header = true;
@@ -243,9 +240,11 @@ mod tests {
 
         let error = load_committed_migrations(&committed_dir).unwrap_err();
 
-        assert!(error
-            .to_string()
-            .contains("expected committed migration 000001"));
+        assert!(
+            error
+                .to_string()
+                .contains("expected committed migration 000001")
+        );
     }
 
     #[test]

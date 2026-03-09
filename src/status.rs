@@ -1,11 +1,11 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use duckdb::Connection;
 
 use crate::{
     config::Config,
     current_migration,
-    migration_files::{load_committed_migrations, CommittedMigration},
-    migration_state::{load_applied_migrations_if_present, AppliedMigration},
+    migration_files::load_committed_migrations,
+    migration_state::{load_applied_migrations_if_present, verify_applied_history},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,34 +48,6 @@ pub fn run(config: &Config) -> Result<StatusResult> {
     })
 }
 
-fn verify_applied_history(
-    committed: &[CommittedMigration],
-    applied: &[AppliedMigration],
-) -> Result<()> {
-    if applied.len() > committed.len() {
-        bail!(
-            "database has {} applied migrations but only {} exist on disk",
-            applied.len(),
-            committed.len()
-        );
-    }
-
-    for (index, applied_migration) in applied.iter().enumerate() {
-        let disk_migration = &committed[index];
-        if applied_migration.filename != disk_migration.filename
-            || applied_migration.hash != disk_migration.hash
-            || applied_migration.previous_hash != disk_migration.previous_hash
-        {
-            bail!(
-                "applied migration history diverges at {}",
-                applied_migration.filename
-            );
-        }
-    }
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -83,10 +55,13 @@ mod tests {
 
     use tempfile::tempdir;
 
-    use super::{run, verify_applied_history};
+    use super::run;
     use crate::{
-        config::Config, migrate, migration_files::CommittedMigration, migration_hash,
-        migration_state::AppliedMigration,
+        config::Config,
+        migrate,
+        migration_files::CommittedMigration,
+        migration_hash,
+        migration_state::{verify_applied_history, AppliedMigration},
     };
 
     fn committed_migration(

@@ -1,15 +1,15 @@
 use std::fs;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use duckdb::Connection;
 
 use crate::{
     compiler,
     config::Config,
-    migration_files::{load_committed_migrations, CommittedMigration},
+    migration_files::{CommittedMigration, load_committed_migrations},
     migration_state::{
-        ensure_metadata_storage, load_applied_migrations, metadata_table_exists,
-        record_applied_migration, AppliedMigration,
+        AppliedMigration, ensure_metadata_storage, load_applied_migrations, metadata_table_exists,
+        record_applied_migration, verify_applied_history,
     },
 };
 
@@ -69,34 +69,6 @@ fn ensure_database_parent_dir(path: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
-fn verify_applied_history(
-    committed: &[CommittedMigration],
-    applied: &[AppliedMigration],
-) -> Result<()> {
-    if applied.len() > committed.len() {
-        bail!(
-            "database has {} applied migrations but only {} exist on disk",
-            applied.len(),
-            committed.len()
-        );
-    }
-
-    for (index, applied_migration) in applied.iter().enumerate() {
-        let disk_migration = &committed[index];
-        if applied_migration.filename != disk_migration.filename
-            || applied_migration.hash != disk_migration.hash
-            || applied_migration.previous_hash != disk_migration.previous_hash
-        {
-            bail!(
-                "applied migration history diverges at {}",
-                applied_migration.filename
-            );
-        }
-    }
-
-    Ok(())
-}
-
 fn apply_migration(
     connection: &mut Connection,
     config: &Config,
@@ -126,12 +98,12 @@ mod tests {
     use duckdb::Connection;
     use tempfile::tempdir;
 
-    use super::{run, verify_applied_history};
+    use super::run;
     use crate::{
         config::Config,
         migration_files::CommittedMigration,
         migration_hash,
-        migration_state::{ensure_metadata_storage, AppliedMigration},
+        migration_state::{AppliedMigration, ensure_metadata_storage, verify_applied_history},
     };
 
     fn committed_migration(
@@ -187,9 +159,11 @@ mod tests {
 
         let error = verify_applied_history(&committed, &applied).unwrap_err();
 
-        assert!(error
-            .to_string()
-            .contains("database has 2 applied migrations but only 1 exist on disk"));
+        assert!(
+            error
+                .to_string()
+                .contains("database has 2 applied migrations but only 1 exist on disk")
+        );
     }
 
     #[test]
@@ -199,9 +173,11 @@ mod tests {
 
         let error = verify_applied_history(&committed, &applied).unwrap_err();
 
-        assert!(error
-            .to_string()
-            .contains("applied migration history diverges at 000001.sql"));
+        assert!(
+            error
+                .to_string()
+                .contains("applied migration history diverges at 000001.sql")
+        );
     }
 
     #[test]
@@ -308,9 +284,11 @@ database_path = "dev.duckdb"
 
         let error = run(&config).unwrap_err();
 
-        assert!(error
-            .to_string()
-            .contains("applied migration history diverges"));
+        assert!(
+            error
+                .to_string()
+                .contains("applied migration history diverges")
+        );
     }
 
     #[test]
@@ -330,9 +308,11 @@ manage_metadata = false
         let config = Config::load(&config_path).unwrap();
         let error = run(&config).unwrap_err();
 
-        assert!(error
-            .to_string()
-            .contains("metadata table mallard.migrations does not exist"));
+        assert!(
+            error
+                .to_string()
+                .contains("metadata table mallard.migrations does not exist")
+        );
     }
 
     #[test]

@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use serde::Deserialize;
 
 const CONFIG_FILE_NAME: &str = "mallard.toml";
@@ -391,12 +391,16 @@ internal_schema = "bad-schema"
 
         let error = Config::load(&config_path).unwrap_err();
 
-        assert!(error
-            .to_string()
-            .contains(&config_path.display().to_string()));
-        assert!(error
-            .to_string()
-            .contains("internal schema must contain only ASCII letters, digits, or underscores"));
+        assert!(
+            error
+                .to_string()
+                .contains(&config_path.display().to_string())
+        );
+        assert!(
+            error.to_string().contains(
+                "internal schema must contain only ASCII letters, digits, or underscores"
+            )
+        );
     }
 
     #[test]

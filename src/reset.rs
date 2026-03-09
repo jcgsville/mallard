@@ -1,6 +1,6 @@
-use std::fs;
+use std::{ffi::OsString, fs};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 use crate::{config::Config, migrate, migrate::MigrateResult};
 
@@ -19,7 +19,7 @@ pub fn run(config: &Config, force: bool) -> Result<ResetResult> {
     }
 
     remove_if_exists(&config.database_path)?;
-    remove_if_exists(&config.database_path.with_extension("duckdb.wal"))?;
+    remove_if_exists(&wal_path(&config.database_path))?;
 
     let migrate_result = migrate::run(config)?;
     Ok(ResetResult {
@@ -35,6 +35,12 @@ fn remove_if_exists(path: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
+fn wal_path(path: &std::path::Path) -> std::path::PathBuf {
+    let mut wal_path = OsString::from(path.as_os_str());
+    wal_path.push(".wal");
+    std::path::PathBuf::from(wal_path)
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -42,8 +48,24 @@ mod tests {
     use duckdb::Connection;
     use tempfile::tempdir;
 
-    use super::run;
+    use super::{run, wal_path};
     use crate::{config::Config, migrate, migration_hash};
+
+    #[test]
+    fn wal_path_appends_suffix_without_replacing_existing_extension() {
+        assert_eq!(
+            wal_path(std::path::Path::new("dev")),
+            std::path::PathBuf::from("dev.wal")
+        );
+        assert_eq!(
+            wal_path(std::path::Path::new("dev.db")),
+            std::path::PathBuf::from("dev.db.wal")
+        );
+        assert_eq!(
+            wal_path(std::path::Path::new("dev.duckdb")),
+            std::path::PathBuf::from("dev.duckdb.wal")
+        );
+    }
 
     #[test]
     fn requires_force_for_destructive_reset() {
