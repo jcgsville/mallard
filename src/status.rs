@@ -101,7 +101,6 @@ mod tests {
             path: PathBuf::from(filename),
             previous_hash: previous_hash.map(str::to_string),
             hash: hash.to_string(),
-            message: format!("migration {version}"),
             body: format!("-- body for {filename}"),
         }
     }
@@ -123,10 +122,10 @@ mod tests {
         let first_hash = "a".repeat(64);
         let second_hash = "b".repeat(64);
         let committed = vec![
-            committed_migration(1, "000001-init.sql", None, &first_hash),
-            committed_migration(2, "000002-add-users.sql", Some(&first_hash), &second_hash),
+            committed_migration(1, "000001.sql", None, &first_hash),
+            committed_migration(2, "000002.sql", Some(&first_hash), &second_hash),
         ];
-        let applied = vec![applied_migration("000001-init.sql", None, &first_hash)];
+        let applied = vec![applied_migration("000001.sql", None, &first_hash)];
 
         verify_applied_history(&committed, &applied).unwrap();
     }
@@ -135,10 +134,10 @@ mod tests {
     fn verify_applied_history_rejects_extra_applied_migrations() {
         let first_hash = "a".repeat(64);
         let second_hash = "b".repeat(64);
-        let committed = vec![committed_migration(1, "000001-init.sql", None, &first_hash)];
+        let committed = vec![committed_migration(1, "000001.sql", None, &first_hash)];
         let applied = vec![
-            applied_migration("000001-init.sql", None, &first_hash),
-            applied_migration("000002-add-users.sql", Some(&first_hash), &second_hash),
+            applied_migration("000001.sql", None, &first_hash),
+            applied_migration("000002.sql", Some(&first_hash), &second_hash),
         ];
 
         let error = verify_applied_history(&committed, &applied).unwrap_err();
@@ -150,19 +149,14 @@ mod tests {
 
     #[test]
     fn verify_applied_history_rejects_divergent_metadata() {
-        let committed = vec![committed_migration(
-            1,
-            "000001-init.sql",
-            None,
-            &"a".repeat(64),
-        )];
-        let applied = vec![applied_migration("000001-init.sql", None, &"b".repeat(64))];
+        let committed = vec![committed_migration(1, "000001.sql", None, &"a".repeat(64))];
+        let applied = vec![applied_migration("000001.sql", None, &"b".repeat(64))];
 
         let error = verify_applied_history(&committed, &applied).unwrap_err();
 
         assert!(error
             .to_string()
-            .contains("applied migration history diverges at 000001-init.sql"));
+            .contains("applied migration history diverges at 000001.sql"));
     }
 
     #[test]
@@ -197,8 +191,8 @@ mod tests {
         let body = "create table users (id integer primary key);";
         let hash = migration_hash::calculate(None, body);
         fs::write(
-            committed_dir.join("000001-init.sql"),
-            format!("--! Previous: \n--! Hash: {hash}\n--! Message: init\n\n{body}\n"),
+            committed_dir.join("000001.sql"),
+            format!("--! Previous: \n--! Hash: {hash}\n\n{body}\n"),
         )
         .unwrap();
 
@@ -222,8 +216,8 @@ mod tests {
         let body = "create table users (id integer primary key);";
         let hash = migration_hash::calculate(None, body);
         fs::write(
-            committed_dir.join("000001-init.sql"),
-            format!("--! Previous: \n--! Hash: {hash}\n--! Message: init\n\n{body}\n"),
+            committed_dir.join("000001.sql"),
+            format!("--! Previous: \n--! Hash: {hash}\n\n{body}\n"),
         )
         .unwrap();
 
@@ -233,10 +227,8 @@ mod tests {
         let second_body = "alter table users add column email text;";
         let second_hash = migration_hash::calculate(Some(&hash), second_body);
         fs::write(
-            committed_dir.join("000002-add-email.sql"),
-            format!(
-                "--! Previous: {hash}\n--! Hash: {second_hash}\n--! Message: add email\n\n{second_body}\n"
-            ),
+            committed_dir.join("000002.sql"),
+            format!("--! Previous: {hash}\n--! Hash: {second_hash}\n\n{second_body}\n"),
         )
         .unwrap();
 

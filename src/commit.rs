@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use duckdb::Connection;
 
 use crate::{
@@ -14,13 +14,11 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommitResult {
     pub committed_path: PathBuf,
-    pub message: String,
     pub shadow_database_path: PathBuf,
     pub reset_target_path: PathBuf,
 }
 
-pub fn run(config: &Config, message: &str) -> Result<CommitResult> {
-    let normalized_message = normalize_message(message)?;
+pub fn run(config: &Config) -> Result<CommitResult> {
     let current = current_migration::load(config)?;
     let expanded_current = compiler::expand_current(config)?;
     validate_current_migration(&expanded_current)?;
@@ -32,28 +30,18 @@ pub fn run(config: &Config, message: &str) -> Result<CommitResult> {
     let next_version = committed.len() as u32 + 1;
     let previous_hash = committed.last().map(|migration| migration.hash.clone());
     let hash = migration_hash::calculate(previous_hash.as_deref(), &expanded_current);
-    let filename = format!(
-        "{:06}-{}.sql",
-        next_version,
-        slugify_message(&normalized_message)
-    );
+    let filename = format!("{:06}.sql", next_version);
     let committed_path = committed_dir.join(filename);
 
     fs::write(
         &committed_path,
-        render_committed_migration(
-            &normalized_message,
-            previous_hash.as_deref(),
-            &hash,
-            &expanded_current,
-        ),
+        render_committed_migration(previous_hash.as_deref(), &hash, &expanded_current),
     )
     .with_context(|| format!("failed to write {}", committed_path.display()))?;
     clear_current_migration(&current).context("failed to reset current migration after commit")?;
 
     Ok(CommitResult {
         committed_path,
-        message: normalized_message,
         shadow_database_path: config.shadow_path.clone(),
         reset_target_path: current_source_path(&current),
     })
@@ -122,49 +110,13 @@ fn validate_against_shadow(config: &Config, current_contents: &str) -> Result<()
     Ok(())
 }
 
-fn render_committed_migration(
-    message: &str,
-    previous_hash: Option<&str>,
-    hash: &str,
-    body: &str,
-) -> String {
+fn render_committed_migration(previous_hash: Option<&str>, hash: &str, body: &str) -> String {
     format!(
-        "--! Previous: {}\n--! Hash: {}\n--! Message: {}\n\n{}",
+        "--! Previous: {}\n--! Hash: {}\n\n{}",
         previous_hash.unwrap_or(""),
         hash,
-        message,
         migration_hash::normalize_body(body)
     )
-}
-
-fn normalize_message(message: &str) -> Result<String> {
-    let message = message.trim();
-    if message.is_empty() {
-        bail!("commit message cannot be empty");
-    }
-    Ok(message.to_string())
-}
-
-fn slugify_message(message: &str) -> String {
-    let mut slug = String::new();
-    let mut previous_was_dash = false;
-
-    for ch in message.chars() {
-        if ch.is_ascii_alphanumeric() {
-            slug.push(ch.to_ascii_lowercase());
-            previous_was_dash = false;
-        } else if !previous_was_dash {
-            slug.push('-');
-            previous_was_dash = true;
-        }
-    }
-
-    let slug = slug.trim_matches('-');
-    if slug.is_empty() {
-        "migration".to_string()
-    } else {
-        slug.to_string()
-    }
 }
 
 fn remove_if_exists(path: &Path) -> Result<()> {
@@ -196,16 +148,16 @@ mod tests {
         .unwrap();
 
         let config = Config::load(&config_path).unwrap();
-        let result = run(&config, "Add users table").unwrap();
+        let result = run(&config).unwrap();
 
         assert_eq!(
             result.committed_path.file_name().unwrap().to_string_lossy(),
-            "000001-add-users-table.sql"
+            "000001.sql"
         );
         assert_eq!(
             fs::read_to_string(&result.committed_path).unwrap(),
             format!(
-                "--! Previous: \n--! Hash: {}\n--! Message: Add users table\n\ncreate table users (id integer primary key);\n",
+                "--! Previous: \n--! Hash: {}\n\ncreate table users (id integer primary key);\n",
                 migration_hash::calculate(None, "create table users (id integer primary key);")
             )
         );
@@ -226,8 +178,8 @@ mod tests {
         let first_body = "create table users (id integer primary key);";
         let first_hash = migration_hash::calculate(None, first_body);
         fs::write(
-            committed_dir.join("000001-init.sql"),
-            format!("--! Previous: \n--! Hash: {first_hash}\n--! Message: init\n\n{first_body}\n"),
+            committed_dir.join("000001.sql"),
+            format!("--! Previous: \n--! Hash: {first_hash}\n\n{first_body}\n"),
         )
         .unwrap();
         fs::write(
@@ -237,11 +189,11 @@ mod tests {
         .unwrap();
 
         let config = Config::load(&config_path).unwrap();
-        let result = run(&config, "Seed users").unwrap();
+        let result = run(&config).unwrap();
 
         assert_eq!(
             result.committed_path.file_name().unwrap().to_string_lossy(),
-            "000002-seed-users.sql"
+            "000002.sql"
         );
 
         let migrate_result = migrate::run(&config).unwrap();
@@ -261,19 +213,15 @@ mod tests {
         .unwrap();
 
         let config = Config::load(&config_path).unwrap();
-        let error = run(&config, "Bad current").unwrap_err();
+        let error = run(&config).unwrap_err();
 
-        assert!(
-            error
-                .to_string()
-                .contains("current migration must not contain committed migration headers")
-        );
-        assert!(
-            fs::read_dir(temp_dir.path().join("migrations/committed"))
-                .unwrap()
-                .next()
-                .is_none()
-        );
+        assert!(error
+            .to_string()
+            .contains("current migration must not contain committed migration headers"));
+        assert!(fs::read_dir(temp_dir.path().join("migrations/committed"))
+            .unwrap()
+            .next()
+            .is_none());
     }
 
     #[test]
@@ -289,12 +237,10 @@ mod tests {
         .unwrap();
 
         let config = Config::load(&config_path).unwrap();
-        let error = run(&config, "Broken migration").unwrap_err();
+        let error = run(&config).unwrap_err();
 
-        assert!(
-            error
-                .to_string()
-                .contains("current migration failed shadow validation")
-        );
+        assert!(error
+            .to_string()
+            .contains("current migration failed shadow validation"));
     }
 }

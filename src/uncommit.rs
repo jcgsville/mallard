@@ -1,6 +1,6 @@
 use std::fs;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use duckdb::Connection;
 
 use crate::{
@@ -69,8 +69,8 @@ mod tests {
         let first_body = "create table users (id integer primary key);";
         let first_hash = migration_hash::calculate(None, first_body);
         fs::write(
-            committed_dir.join("000001-init.sql"),
-            format!("--! Previous: \n--! Hash: {first_hash}\n--! Message: init\n\n{first_body}\n"),
+            committed_dir.join("000001.sql"),
+            format!("--! Previous: \n--! Hash: {first_hash}\n\n{first_body}\n"),
         )
         .unwrap();
 
@@ -80,8 +80,8 @@ mod tests {
         let second_body = "alter table users add column email text;";
         let second_hash = migration_hash::calculate(Some(&first_hash), second_body);
         fs::write(
-            committed_dir.join("000002-add-email.sql"),
-            format!("--! Previous: {first_hash}\n--! Hash: {second_hash}\n--! Message: add email\n\n{second_body}\n"),
+            committed_dir.join("000002.sql"),
+            format!("--! Previous: {first_hash}\n--! Hash: {second_hash}\n\n{second_body}\n"),
         )
         .unwrap();
 
@@ -93,13 +93,13 @@ mod tests {
                 .file_name()
                 .unwrap()
                 .to_string_lossy(),
-            "000002-add-email.sql"
+            "000002.sql"
         );
         assert_eq!(
             fs::read_to_string(temp_dir.path().join("migrations/current.sql")).unwrap(),
             "alter table users add column email text;\n"
         );
-        assert!(!committed_dir.join("000002-add-email.sql").exists());
+        assert!(!committed_dir.join("000002.sql").exists());
     }
 
     #[test]
@@ -114,8 +114,8 @@ mod tests {
         let body = "create table users (id integer primary key);";
         let hash = migration_hash::calculate(None, body);
         fs::write(
-            committed_dir.join("000001-init.sql"),
-            format!("--! Previous: \n--! Hash: {hash}\n--! Message: init\n\n{body}\n"),
+            committed_dir.join("000001.sql"),
+            format!("--! Previous: \n--! Hash: {hash}\n\n{body}\n"),
         )
         .unwrap();
 

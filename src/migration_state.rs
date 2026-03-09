@@ -110,7 +110,7 @@ mod tests {
             &connection,
             &schema,
             &AppliedMigration {
-                filename: "000001-init.sql".to_string(),
+                filename: "000001.sql".to_string(),
                 hash: "a".repeat(64),
                 previous_hash: None,
             },
@@ -120,7 +120,7 @@ mod tests {
         let applied = load_applied_migrations(&connection, &schema).unwrap();
 
         assert_eq!(applied.len(), 1);
-        assert_eq!(applied[0].filename, "000001-init.sql");
+        assert_eq!(applied[0].filename, "000001.sql");
     }
 
     #[test]

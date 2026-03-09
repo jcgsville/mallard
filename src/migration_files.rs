@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 
 use crate::migration_hash;
 
@@ -14,7 +14,6 @@ pub struct CommittedMigration {
     pub path: PathBuf,
     pub previous_hash: Option<String>,
     pub hash: String,
-    pub message: String,
     pub body: String,
 }
 
@@ -98,30 +97,16 @@ pub fn parse_committed_migration(path: &Path) -> Result<CommittedMigration> {
         path: path.to_path_buf(),
         previous_hash: parsed.previous_hash,
         hash: parsed.hash,
-        message: parsed.message,
         body: parsed.body,
     })
 }
 
 fn parse_filename(filename: &str) -> Result<u32> {
-    let Some((version, rest)) = filename.split_once('-') else {
+    let Some(version) = filename.strip_suffix(".sql") else {
         bail!("invalid committed migration filename: {filename}");
     };
 
     if version.len() != 6 || !version.bytes().all(|byte| byte.is_ascii_digit()) {
-        bail!("invalid committed migration filename: {filename}");
-    }
-
-    if !rest.ends_with(".sql") || rest == ".sql" {
-        bail!("invalid committed migration filename: {filename}");
-    }
-
-    let slug = &rest[..rest.len() - 4];
-    if slug.is_empty()
-        || !slug
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
-    {
         bail!("invalid committed migration filename: {filename}");
     }
 
@@ -134,7 +119,6 @@ fn parse_contents(filename: &str, contents: &str) -> Result<ParsedMigrationConte
     let normalized = contents.replace("\r\n", "\n");
     let mut previous_hash = None;
     let mut hash = None;
-    let mut message = None;
     let mut body_start = 0usize;
     let mut saw_header = false;
 
@@ -168,12 +152,6 @@ fn parse_contents(filename: &str, contents: &str) -> Result<ParsedMigrationConte
                     }
                     hash = Some(value.to_ascii_lowercase());
                 }
-                "Message" => {
-                    if value.is_empty() {
-                        bail!("empty message in {filename}");
-                    }
-                    message = Some(value.to_string());
-                }
                 _ => bail!("unknown migration header in {filename}: {line}"),
             }
             body_start = offset;
@@ -199,7 +177,6 @@ fn parse_contents(filename: &str, contents: &str) -> Result<ParsedMigrationConte
     Ok(ParsedMigrationContents {
         previous_hash,
         hash: hash.ok_or_else(|| anyhow::anyhow!("missing hash header in {filename}"))?,
-        message: message.ok_or_else(|| anyhow::anyhow!("missing message header in {filename}"))?,
         body,
     })
 }
@@ -207,7 +184,6 @@ fn parse_contents(filename: &str, contents: &str) -> Result<ParsedMigrationConte
 struct ParsedMigrationContents {
     previous_hash: Option<String>,
     hash: String,
-    message: String,
     body: String,
 }
 
@@ -229,18 +205,16 @@ mod tests {
         let first_body = "create table users (id integer primary key);";
         let first_hash = migration_hash::calculate(None, first_body);
         fs::write(
-            committed_dir.join("000001-init.sql"),
-            format!("--! Previous: \n--! Hash: {first_hash}\n--! Message: init\n\n{first_body}\n"),
+            committed_dir.join("000001.sql"),
+            format!("--! Previous: \n--! Hash: {first_hash}\n\n{first_body}\n"),
         )
         .unwrap();
 
         let second_body = "alter table users add column email text;";
         let second_hash = migration_hash::calculate(Some(&first_hash), second_body);
         fs::write(
-            committed_dir.join("000002-add-email.sql"),
-            format!(
-                "--! Previous: {first_hash}\n--! Hash: {second_hash}\n--! Message: add email\n\n{second_body}\n"
-            ),
+            committed_dir.join("000002.sql"),
+            format!("--! Previous: {first_hash}\n--! Hash: {second_hash}\n\n{second_body}\n"),
         )
         .unwrap();
 
@@ -262,18 +236,16 @@ mod tests {
         let body = "select 1;";
         let hash = migration_hash::calculate(None, body);
         fs::write(
-            committed_dir.join("000002-gap.sql"),
-            format!("--! Previous: \n--! Hash: {hash}\n--! Message: gap\n\n{body}\n"),
+            committed_dir.join("000002.sql"),
+            format!("--! Previous: \n--! Hash: {hash}\n\n{body}\n"),
         )
         .unwrap();
 
         let error = load_committed_migrations(&committed_dir).unwrap_err();
 
-        assert!(
-            error
-                .to_string()
-                .contains("expected committed migration 000001")
-        );
+        assert!(error
+            .to_string()
+            .contains("expected committed migration 000001"));
     }
 
     #[test]
@@ -282,8 +254,8 @@ mod tests {
         let committed_dir = temp_dir.path().join("committed");
         fs::create_dir_all(&committed_dir).unwrap();
         fs::write(
-            committed_dir.join("000001-init.sql"),
-            "--! Previous: \n--! Hash: deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n--! Message: init\n\nselect 1;\n",
+            committed_dir.join("000001.sql"),
+            "--! Previous: \n--! Hash: deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n\nselect 1;\n",
         )
         .unwrap();
 

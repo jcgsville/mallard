@@ -53,8 +53,8 @@ Target layout:
 ```text
 migrations/
   committed/
-    000001-init.sql
-    000002-add-users.sql
+    000001.sql
+    000002.sql
   current.sql
   fixtures/
 ```
@@ -307,7 +307,6 @@ Example:
 ```sql
 --! Previous: e3b0c44298fc1c149afbf4c8996fb924...
 --! Hash: a4c4aeb92c20500f364b12b3771ef3a1...
---! Message: add users table
 
 create table users (
   id bigint primary key,
@@ -325,8 +324,8 @@ Rules:
 Recommended filename shape:
 
 ```text
-000001-init.sql
-000002-add-users.sql
+000001.sql
+000002.sql
 ```
 
 ## Hash and History Rules

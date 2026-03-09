@@ -52,7 +52,7 @@ cargo run -- run
 Commit it into the forward-only history:
 
 ```bash
-cargo run -- commit "create customers table"
+cargo run -- commit
 ```
 
 Apply committed migrations to the main database:
@@ -67,8 +67,8 @@ cargo run -- migrate
 
 Committed migrations are immutable SQL files in `migrations/committed`. Mallard requires them to:
 
-- use contiguous numeric prefixes such as `000001-...sql`
-- include header metadata for previous hash, current hash, and message
+- use contiguous numeric filenames such as `000001.sql`
+- include header metadata for previous hash and current hash
 - form a valid hash chain
 - contain a non-empty SQL body
 
@@ -204,13 +204,12 @@ Example:
 mallard migrate
 ```
 
-### `mallard commit <MESSAGE>`
+### `mallard commit`
 
 Validates the current migration, writes the next committed migration, and clears the current migration source.
 
 Behavior:
 
-- rejects empty or whitespace-only messages
 - loads the current migration from file mode or directory mode
 - expands fixture includes
 - rejects empty current SQL
@@ -225,12 +224,12 @@ Important details:
 
 - includes are expanded into the committed file
 - placeholders are not baked into the committed file; they are resolved later at execution time
-- committed filenames use the next sequence number and a slug derived from the message
+- committed filenames use the next sequence number like `000001.sql`
 
 Example:
 
 ```bash
-mallard commit "create customers table"
+mallard commit
 ```
 
 ### `mallard uncommit`
@@ -370,7 +369,7 @@ mallard init
 
 # edit migrations/current.sql
 mallard run
-mallard commit "add customers"
+mallard commit
 mallard migrate
 mallard status
 ```

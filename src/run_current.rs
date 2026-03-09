@@ -83,7 +83,7 @@ mod tests {
     use duckdb::Connection;
     use tempfile::tempdir;
 
-    use super::{RunTarget, run};
+    use super::{run, RunTarget};
     use crate::{config::Config, migration_hash};
 
     #[test]
@@ -134,8 +134,8 @@ APP_SCHEMA = "main"
         let first_body = "create table users (id integer primary key);";
         let first_hash = migration_hash::calculate(None, first_body);
         fs::write(
-            committed_dir.join("000001-init.sql"),
-            format!("--! Previous: \n--! Hash: {first_hash}\n--! Message: init\n\n{first_body}\n"),
+            committed_dir.join("000001.sql"),
+            format!("--! Previous: \n--! Hash: {first_hash}\n\n{first_body}\n"),
         )
         .unwrap();
         fs::write(

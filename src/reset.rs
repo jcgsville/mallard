@@ -1,6 +1,6 @@
 use std::fs;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 
 use crate::{config::Config, migrate, migrate::MigrateResult};
 
@@ -70,8 +70,8 @@ mod tests {
             "create table users (id integer primary key); insert into users (id) values (1);";
         let hash = migration_hash::calculate(None, body);
         fs::write(
-            committed_dir.join("000001-init.sql"),
-            format!("--! Previous: \n--! Hash: {hash}\n--! Message: init\n\n{body}\n"),
+            committed_dir.join("000001.sql"),
+            format!("--! Previous: \n--! Hash: {hash}\n\n{body}\n"),
         )
         .unwrap();
 

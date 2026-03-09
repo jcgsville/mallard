@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 
 use crate::{config::Config, migration_hash};
 
@@ -138,7 +138,7 @@ mod tests {
 
     use tempfile::tempdir;
 
-    use super::{CurrentMode, load, overwrite_empty_with_body};
+    use super::{load, overwrite_empty_with_body, CurrentMode};
     use crate::config::Config;
 
     #[test]
@@ -168,7 +168,7 @@ mod tests {
         fs::create_dir_all(temp_dir.path().join("migrations/current")).unwrap();
 
         let config = Config::load(&config_path).unwrap();
-        let path = overwrite_empty_with_body(&config, "000002-add-users.sql", "select 1;").unwrap();
+        let path = overwrite_empty_with_body(&config, "000002.sql", "select 1;").unwrap();
 
         assert_eq!(fs::read_to_string(&path).unwrap(), "select 1;\n");
     }

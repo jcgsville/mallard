@@ -40,10 +40,7 @@ enum Commands {
     Migrate,
 
     /// Commit the current migration into the committed sequence.
-    Commit {
-        /// Message stored in the committed migration header and filename slug.
-        message: String,
-    },
+    Commit,
 
     /// Move the latest unapplied committed migration back into the current migration.
     Uncommit,
@@ -115,10 +112,10 @@ fn main() -> Result<()> {
                 result.database_path.display()
             );
         }
-        Commands::Commit { message } => {
+        Commands::Commit => {
             let working_dir = env::current_dir()?;
             let config = config::Config::discover(&working_dir, cli.config.as_deref())?;
-            let result = commit::run(&config, &message)?;
+            let result = commit::run(&config)?;
 
             println!("Created {}", result.committed_path.display());
             println!("Reset {}", result.reset_target_path.display());
