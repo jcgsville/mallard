@@ -53,22 +53,10 @@ enum Commands {
     },
 
     /// Replay committed migrations and apply the current migration.
-    Run {
-        /// Target database to use for the run helper.
-        #[arg(long, value_enum, default_value = "shadow")]
-        target: run_current::RunTarget,
-    },
+    Run,
 
     /// Watch migration inputs and rerun the current migration flow.
     Watch {
-        /// Target database to use while watching.
-        #[arg(long, value_enum, default_value = "shadow")]
-        target: run_current::RunTarget,
-
-        /// Run a single watch cycle and exit.
-        #[arg(long)]
-        once: bool,
-
         /// Polling interval in milliseconds.
         #[arg(long, default_value_t = 1000)]
         interval_ms: u64,
@@ -147,35 +135,20 @@ fn main() -> Result<()> {
                 print!("{compiled}");
             }
         }
-        Commands::Run { target } => {
+        Commands::Run => {
             let working_dir = env::current_dir()?;
             let config = config::Config::discover(&working_dir, cli.config.as_deref())?;
-            let result = run_current::run(&config, target)?;
+            let result = run_current::run(&config)?;
 
             println!(
                 "Applied current migration to {}",
                 result.database_path.display()
             );
         }
-        Commands::Watch {
-            target,
-            once,
-            interval_ms,
-        } => {
+        Commands::Watch { interval_ms } => {
             let working_dir = env::current_dir()?;
             let config = config::Config::discover(&working_dir, cli.config.as_deref())?;
-            let result = watch::run(
-                &config,
-                target,
-                once,
-                std::time::Duration::from_millis(interval_ms),
-            )?;
-
-            println!(
-                "Completed {} watch cycle(s) against {}",
-                result.cycles,
-                result.last_run.database_path.display()
-            );
+            watch::run(&config, std::time::Duration::from_millis(interval_ms))?;
         }
         Commands::Status => {
             let working_dir = env::current_dir()?;

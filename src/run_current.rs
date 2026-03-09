@@ -1,62 +1,24 @@
-use std::fs;
-
 use anyhow::{Context, Result};
-use clap::ValueEnum;
 use duckdb::Connection;
 
 use crate::{compiler, config::Config, migrate};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-pub enum RunTarget {
-    Main,
-    Shadow,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunResult {
     pub database_path: std::path::PathBuf,
     pub applied_current: bool,
-    pub target: RunTarget,
 }
 
-pub fn run(config: &Config, target: RunTarget) -> Result<RunResult> {
+pub fn run(config: &Config) -> Result<RunResult> {
     let compiled_current = compiler::compile_current(config)?;
-
-    match target {
-        RunTarget::Main => run_on_main(config, &compiled_current),
-        RunTarget::Shadow => run_on_shadow(config, &compiled_current),
-    }
-}
-
-fn run_on_main(config: &Config, compiled_current: &str) -> Result<RunResult> {
     migrate::run(config)?;
     let mut connection = Connection::open(&config.database_path)
         .with_context(|| format!("failed to open {}", config.database_path.display()))?;
-    apply_current_sql(&mut connection, compiled_current)?;
+    apply_current_sql(&mut connection, &compiled_current)?;
 
     Ok(RunResult {
         database_path: config.database_path.clone(),
         applied_current: !compiled_current.trim().is_empty(),
-        target: RunTarget::Main,
-    })
-}
-
-fn run_on_shadow(config: &Config, compiled_current: &str) -> Result<RunResult> {
-    remove_if_exists(&config.shadow_path)?;
-    remove_if_exists(&config.shadow_path.with_extension("duckdb.wal"))?;
-
-    let mut shadow_config = config.clone();
-    shadow_config.database_path = config.shadow_path.clone();
-    migrate::run(&shadow_config)?;
-
-    let mut connection = Connection::open(&config.shadow_path)
-        .with_context(|| format!("failed to open {}", config.shadow_path.display()))?;
-    apply_current_sql(&mut connection, compiled_current)?;
-
-    Ok(RunResult {
-        database_path: config.shadow_path.clone(),
-        applied_current: !compiled_current.trim().is_empty(),
-        target: RunTarget::Shadow,
     })
 }
 
@@ -69,13 +31,6 @@ fn apply_current_sql(connection: &mut Connection, compiled_current: &str) -> Res
     Ok(())
 }
 
-fn remove_if_exists(path: &std::path::Path) -> Result<()> {
-    if path.exists() {
-        fs::remove_file(path).with_context(|| format!("failed to remove {}", path.display()))?;
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -83,46 +38,8 @@ mod tests {
     use duckdb::Connection;
     use tempfile::tempdir;
 
-    use super::{run, RunTarget};
+    use super::run;
     use crate::{config::Config, migration_hash};
-
-    #[test]
-    fn runs_current_migration_on_shadow_with_placeholders() {
-        let temp_dir = tempdir().unwrap();
-        let config_path = temp_dir.path().join("mallard.toml");
-        fs::write(
-            &config_path,
-            r#"version = 1
-
-[placeholders]
-APP_SCHEMA = "main"
-"#,
-        )
-        .unwrap();
-        let fixtures_dir = temp_dir.path().join("migrations/fixtures");
-        fs::create_dir_all(&fixtures_dir).unwrap();
-        fs::write(
-            fixtures_dir.join("users.sql"),
-            "create table :APP_SCHEMA.users (id integer primary key);\n",
-        )
-        .unwrap();
-        fs::write(
-            temp_dir.path().join("migrations/current.sql"),
-            "--! include fixtures/users.sql\ninsert into :APP_SCHEMA.users (id) values (1);\n",
-        )
-        .unwrap();
-        fs::create_dir_all(temp_dir.path().join("migrations/committed")).unwrap();
-
-        let config = Config::load(&config_path).unwrap();
-        let result = run(&config, RunTarget::Shadow).unwrap();
-
-        assert_eq!(result.target, RunTarget::Shadow);
-        let connection = Connection::open(&config.shadow_path).unwrap();
-        let user_count: i64 = connection
-            .query_row("select count(*) from users", [], |row| row.get(0))
-            .unwrap();
-        assert_eq!(user_count, 1);
-    }
 
     #[test]
     fn runs_current_migration_on_main_after_committed_replay() {
@@ -145,9 +62,8 @@ APP_SCHEMA = "main"
         .unwrap();
 
         let config = Config::load(&config_path).unwrap();
-        let result = run(&config, RunTarget::Main).unwrap();
+        let _result = run(&config).unwrap();
 
-        assert_eq!(result.target, RunTarget::Main);
         let connection = Connection::open(&config.database_path).unwrap();
         let user_count: i64 = connection
             .query_row("select count(*) from users", [], |row| row.get(0))
@@ -168,7 +84,7 @@ APP_SCHEMA = "main"
         .unwrap();
 
         let config = Config::load(&config_path).unwrap();
-        let error = run(&config, RunTarget::Main).unwrap_err();
+        let error = run(&config).unwrap_err();
 
         assert!(error.to_string().contains("missing_table"));
 

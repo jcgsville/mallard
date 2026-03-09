@@ -43,10 +43,10 @@ migrations/
   fixtures/
 ```
 
-Write SQL into `migrations/current.sql`, then validate it against the shadow database:
+Write SQL into `migrations/current.sql`, then iterate on it locally:
 
 ```bash
-cargo run -- run
+cargo run -- watch
 ```
 
 Commit it into the forward-only history:
@@ -88,7 +88,52 @@ Directory mode is loaded recursively in sorted path order. You cannot use both f
 - the main database is the configured `database_path`
 - the shadow database is the configured `shadow_path`
 
-Mallard uses the shadow database to validate the current migration by replaying committed migrations first and then applying the current SQL.
+Mallard uses these databases for different jobs.
+
+- `main` is your normal development database
+- `shadow` is a disposable validation database; Mallard recreates it when it wants a clean replay from committed history
+
+Shadow validation means:
+
+- replay all committed migrations from scratch into a fresh shadow database
+- compile and apply the current migration on top of that clean baseline
+- fail if either stage errors
+
+That gives Mallard a trustworthy "can this build cleanly from the committed history plus current migration?" check.
+
+What Mallard does not do yet:
+
+- compare main and shadow schemas for drift
+- diff the resulting schema against an expected snapshot
+- perform deeper semantic validation beyond successful replay and execution
+
+Future improvements may include stronger schema verification, drift detection, or schema snapshot checks, but the shadow database is primarily a clean execution and commit-validation target.
+
+### Migration idempotency
+
+By default, `watch` reruns the current migration against the main development database on every change:
+
+```bash
+mallard watch
+```
+
+Why this works:
+
+- `watch` first brings the main database up to date with committed migrations
+- it then reapplies the current migration on top of the existing main database state each time files change
+
+That means your work-in-progress migration should be idempotent to enable iteration. `migrations/current.sql` should be safe to run repeatedly and still converge on the schema you want.
+
+When plain `create ...` statements are not enough, an explicit undo/redo pattern is often the simplest approach:
+
+```sql
+drop table if exists people;
+
+create table people (
+  id integer primary key,
+  name text
+);
+```
 
 ## Configuration
 
@@ -266,36 +311,28 @@ Example:
 mallard compile --output build/current.sql
 ```
 
-### `mallard run [--target <main|shadow>]`
+### `mallard run`
 
-Brings the selected target up to date, and runs the current migration against it. In general, `watch` is better suited for development, but this command can be useful in cases where a one-off run of the current migration is useful.
-
-Flags:
-
-- `--target shadow`: default; recreates shadow, replays committed migrations, then applies current SQL
-- `--target main`: runs `migrate` on the main database, then applies current SQL to main
+Brings the main database up to date, and runs the current migration against it. In general, `watch` is better suited for development, but this command can be useful in cases where a one-off run of the current migration is useful.
 
 Behavior:
 
 - compiles the current migration with includes and placeholders
 - treats empty current SQL as a no-op
 - applies the current migration in a transaction
-- for `--target main`, committed migrations and current migration are separate stages
 
 Example:
 
 ```bash
-mallard run --target shadow
+mallard run
 ```
 
-### `mallard watch [--target <main|shadow>] [--once] [--interval-ms <MS>]`
+### `mallard watch [--interval-ms <MS>]`
 
 Polls migration inputs and reruns the `run` flow when files change.
 
 Flags:
 
-- `--target <main|shadow>`: defaults to `shadow`
-- `--once`: run a single cycle and exit
 - `--interval-ms <MS>`: polling interval in milliseconds, default `1000`
 
 Behavior:
@@ -303,14 +340,15 @@ Behavior:
 - performs one run immediately on startup
 - watches `current.sql`, `current/`, `committed/`, and `fixtures/` using polling
 - reruns when file path, size, or modified time changes
+- by default, Mallard does not reset the main database between reruns
+- current migrations should therefore be written to tolerate repeated execution while watching
 - does not watch `mallard.toml`
 
 Examples:
 
 ```bash
 mallard watch
-mallard watch --once
-mallard watch --target main --interval-ms 500
+mallard watch --interval-ms 500
 ```
 
 ### `mallard status`
@@ -374,5 +412,5 @@ mallard status
 - Mallard is forward-only; it does not generate down migrations
 - `uncommit` only works for the latest committed migration and only before that migration reaches the main database
 - `reset` is destructive and intentionally gated behind `--force`
-- `run --target main` can leave newly committed migrations applied even if the current migration later fails
+- `run` can leave newly committed migrations applied even if the current migration later fails
 - placeholder values are raw SQL text; quote or escape them yourself when needed

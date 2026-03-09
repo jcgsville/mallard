@@ -125,16 +125,14 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn init_bootstraps_project_files() {
+    fn init_bootstraps_project_files_for_new_explicit_config_path() {
         let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("mallard.toml");
 
-        let result = init_in_dir(temp_dir.path(), None).unwrap();
+        let result = init_in_dir(temp_dir.path(), Some(&config_path)).unwrap();
 
         assert!(result.config_created);
-        assert_eq!(
-            fs::read_to_string(temp_dir.path().join("mallard.toml")).unwrap(),
-            DEFAULT_CONFIG
-        );
+        assert_eq!(fs::read_to_string(&config_path).unwrap(), DEFAULT_CONFIG);
         assert!(temp_dir.path().join("migrations/committed").is_dir());
         assert!(temp_dir.path().join("migrations/fixtures").is_dir());
         assert!(temp_dir.path().join("migrations/current.sql").is_file());
