@@ -357,9 +357,7 @@ Reports whether committed migrations are pending and whether the current migrati
 
 Behavior:
 
-- loads committed migrations and current migration state
-- reads database metadata if the main database exists
-- validates that applied history matches the committed prefix
+- loads and validates the committed migrations and current migration state
 - prints two booleans:
   - pending committed migrations
   - current migration has changes
