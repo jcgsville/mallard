@@ -109,12 +109,14 @@ fn render_committed_migration(previous_hash: Option<&str>, hash: &str, body: &st
 }
 
 fn next_migration_version(committed_len: usize) -> Result<u32> {
-    let next_version = committed_len as u64 + 1;
-    if next_version > 999_999 {
+    if committed_len >= 999_999 {
         bail!("committed migration sequence has reached the maximum of 999,999");
     }
 
-    Ok(next_version as u32)
+    committed_len
+        .checked_add(1)
+        .and_then(|next_version| u32::try_from(next_version).ok())
+        .ok_or_else(|| anyhow::anyhow!("committed migration sequence overflowed internal limits"))
 }
 
 #[cfg(test)]

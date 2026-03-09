@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 
 use crate::migration_hash;
 
@@ -127,16 +127,22 @@ fn parse_contents(filename: &str, contents: &str) -> Result<ParsedMigrationConte
     let mut previous_hash = None;
     let mut hash = None;
     let mut body_start = 0usize;
-    let mut saw_header = false;
+    let mut header_lines = 0usize;
+    let mut saw_blank_after_headers = false;
     let mut offset = 0usize;
 
-    for line in normalized.lines() {
-        offset += line.len() + 1;
+    for line in normalized.split_inclusive('\n') {
+        let content = line.strip_suffix('\n').unwrap_or(line);
 
-        if let Some(header) = line.strip_prefix("--! ") {
-            saw_header = true;
+        if let Some(header) = content.strip_prefix("--! ") {
+            if saw_blank_after_headers {
+                bail!(
+                    "migration headers in {filename} must be contiguous and followed by a blank line"
+                );
+            }
+
             let Some((key, value)) = header.split_once(':') else {
-                bail!("invalid migration header in {filename}: {line}");
+                bail!("invalid migration header in {filename}: {content}");
             };
             let value = value.trim();
             match key.trim() {
@@ -156,22 +162,33 @@ fn parse_contents(filename: &str, contents: &str) -> Result<ParsedMigrationConte
                     }
                     hash = Some(value.to_ascii_lowercase());
                 }
-                _ => bail!("unknown migration header in {filename}: {line}"),
+                _ => bail!("unknown migration header in {filename}: {content}"),
             }
-            body_start = offset;
+            header_lines += 1;
+            offset += line.len();
             continue;
         }
 
-        body_start = if saw_header && line.is_empty() {
-            offset
-        } else {
-            offset - (line.len() + 1)
-        };
+        if header_lines == 0 {
+            break;
+        }
+
+        if content.is_empty() {
+            saw_blank_after_headers = true;
+            offset += line.len();
+            continue;
+        }
+
+        body_start = offset;
         break;
     }
 
+    if header_lines > 0 && body_start == 0 {
+        body_start = offset;
+    }
+
     let body = migration_hash::normalize_body(&normalized[body_start.min(normalized.len())..]);
-    if !saw_header {
+    if header_lines == 0 {
         bail!("missing migration headers in {filename}");
     }
     if body.is_empty() {
@@ -247,11 +264,9 @@ mod tests {
 
         let error = load_committed_migrations(&committed_dir).unwrap_err();
 
-        assert!(
-            error
-                .to_string()
-                .contains("expected committed migration 000001")
-        );
+        assert!(error
+            .to_string()
+            .contains("expected committed migration 000001"));
     }
 
     #[test]
@@ -286,11 +301,30 @@ mod tests {
 
         let error = load_committed_migrations(&committed_dir).unwrap_err();
 
-        assert!(
-            error
-                .to_string()
-                .contains("first committed migration 000001.sql")
-        );
+        assert!(error
+            .to_string()
+            .contains("first committed migration 000001.sql"));
+    }
+
+    #[test]
+    fn rejects_blank_lines_between_headers() {
+        let temp_dir = tempdir().unwrap();
+        let committed_dir = temp_dir.path().join("committed");
+        fs::create_dir_all(&committed_dir).unwrap();
+        let body = "select 1;";
+        let previous_hash = "a".repeat(64);
+        let hash = migration_hash::calculate(Some(&previous_hash), body);
+        fs::write(
+            committed_dir.join("000001.sql"),
+            format!("--! Previous: {previous_hash}\n\n--! Hash: {hash}\n\n{body}\n"),
+        )
+        .unwrap();
+
+        let error = load_committed_migrations(&committed_dir).unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("must be contiguous and followed by a blank line"));
     }
 
     #[test]

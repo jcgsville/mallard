@@ -44,6 +44,8 @@ pub fn load_applied_migrations(
     internal_schema: &SqlIdentifier,
 ) -> Result<Vec<AppliedMigration>> {
     let sql = format!(
+        // Filenames are zero-padded six-digit prefixes, so lexicographic order
+        // matches migration version order.
         "SELECT filename, hash, previous_hash FROM {}.migrations ORDER BY filename ASC",
         internal_schema.quoted()
     );

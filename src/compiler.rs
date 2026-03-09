@@ -72,7 +72,9 @@ fn expand_includes_inner(
     visiting: &mut HashSet<PathBuf>,
     seen: &mut HashSet<PathBuf>,
 ) -> Result<String> {
-    let canonical_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let canonical_path = path
+        .canonicalize()
+        .with_context(|| format!("failed to resolve {}", path.display()))?;
     if !visiting.insert(canonical_path.clone()) {
         bail!("include cycle detected at {}", path.display());
     }

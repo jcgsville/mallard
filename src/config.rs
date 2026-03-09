@@ -263,6 +263,7 @@ mod tests {
     };
     use tempfile::tempdir;
 
+    // All tests that mutate process environment variables must hold this lock.
     static ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
     #[test]
