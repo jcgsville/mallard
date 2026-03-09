@@ -38,8 +38,9 @@ pub fn compile_source(config: &Config, path: &Path, raw: &str) -> Result<String>
 }
 
 pub fn expand_includes(config: &Config, path: &Path, sql: &str) -> Result<String> {
-    let mut visited = HashSet::new();
-    expand_includes_inner(config, path, sql, &mut visited)
+    let mut visiting = HashSet::new();
+    let mut seen = HashSet::new();
+    expand_includes_inner(config, path, sql, &mut visiting, &mut seen)
 }
 
 pub fn resolve_placeholders(config: &Config, sql: &str) -> Result<String> {
@@ -82,10 +83,11 @@ fn expand_includes_inner(
     config: &Config,
     path: &Path,
     sql: &str,
-    visited: &mut HashSet<PathBuf>,
+    visiting: &mut HashSet<PathBuf>,
+    seen: &mut HashSet<PathBuf>,
 ) -> Result<String> {
     let canonical_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    if !visited.insert(canonical_path.clone()) {
+    if !visiting.insert(canonical_path.clone()) {
         bail!("include cycle detected at {}", path.display());
     }
 
@@ -94,9 +96,12 @@ fn expand_includes_inner(
         let trimmed = segment.trim();
         if let Some(include_path) = trimmed.strip_prefix("--! include ") {
             let include_path = resolve_include_path(config, path, include_path.trim())?;
+            if !seen.insert(include_path.clone()) {
+                bail!("duplicate include detected: {}", include_path.display());
+            }
             let included = fs::read_to_string(&include_path)
                 .with_context(|| format!("failed to read include {}", include_path.display()))?;
-            let expanded = expand_includes_inner(config, &include_path, &included, visited)?;
+            let expanded = expand_includes_inner(config, &include_path, &included, visiting, seen)?;
             compiled.push_str(&expanded);
             if !expanded.is_empty() && !expanded.ends_with('\n') {
                 compiled.push('\n');
@@ -106,7 +111,7 @@ fn expand_includes_inner(
         }
     }
 
-    visited.remove(&canonical_path);
+    visiting.remove(&canonical_path);
     Ok(compiled)
 }
 
@@ -202,5 +207,25 @@ APP_SCHEMA = "main"
             resolve_placeholders(&config, "select * from :MISSING_SCHEMA.users;").unwrap_err();
 
         assert!(error.to_string().contains("unknown placeholder"));
+    }
+
+    #[test]
+    fn rejects_duplicate_includes_with_clear_error() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("mallard.toml");
+        fs::write(&config_path, "version = 1").unwrap();
+        let fixtures_dir = temp_dir.path().join("migrations/fixtures");
+        fs::create_dir_all(&fixtures_dir).unwrap();
+        fs::write(fixtures_dir.join("users.sql"), "select 1;\n").unwrap();
+        fs::write(
+            temp_dir.path().join("migrations/current.sql"),
+            "--! include fixtures/users.sql\n--! include fixtures/users.sql\n",
+        )
+        .unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let error = compile_current(&config).unwrap_err();
+
+        assert!(error.to_string().contains("duplicate include detected"));
     }
 }

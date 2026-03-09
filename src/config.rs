@@ -252,8 +252,13 @@ fn default_internal_schema() -> String {
 #[cfg(test)]
 mod tests {
     use super::Config;
-    use std::{env, fs};
+    use std::{
+        env, fs,
+        sync::{LazyLock, Mutex},
+    };
     use tempfile::tempdir;
+
+    static ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
     #[test]
     fn resolves_relative_paths_from_config_directory() {
@@ -291,6 +296,7 @@ dir = "sql"
 
     #[test]
     fn interpolates_env_values_and_defaults() {
+        let _guard = ENV_LOCK.lock().unwrap();
         let temp_dir = tempdir().unwrap();
         let config_path = temp_dir.path().join("mallard.toml");
 

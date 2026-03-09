@@ -76,13 +76,13 @@ fn apply_current_sql(
     compiled_current: &str,
     target: HookTarget,
 ) -> Result<()> {
-    hooks::run_hooks(connection, config, HookPhase::Before, target)?;
+    let transaction = connection.transaction()?;
+    hooks::run_hooks(&transaction, config, HookPhase::Before, target)?;
     if !compiled_current.trim().is_empty() {
-        let transaction = connection.transaction()?;
         transaction.execute_batch(compiled_current)?;
-        transaction.commit()?;
     }
-    hooks::run_hooks(connection, config, HookPhase::After, target)?;
+    hooks::run_hooks(&transaction, config, HookPhase::After, target)?;
+    transaction.commit()?;
     Ok(())
 }
 
@@ -187,5 +187,40 @@ APP_SCHEMA = "main"
             .query_row("select count(*) from users", [], |row| row.get(0))
             .unwrap();
         assert_eq!(user_count, 1);
+    }
+
+    #[test]
+    fn rolls_back_before_hook_if_main_run_fails() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("mallard.toml");
+        fs::write(&config_path, "version = 1").unwrap();
+        let hooks_dir = temp_dir.path().join("migrations/hooks");
+        fs::create_dir_all(temp_dir.path().join("migrations/committed")).unwrap();
+        fs::create_dir_all(&hooks_dir).unwrap();
+        fs::write(
+            hooks_dir.join("before-main.sql"),
+            "create table if not exists hook_log (stage text);\ninsert into hook_log (stage) values ('before-main');\n",
+        )
+        .unwrap();
+        fs::write(
+            temp_dir.path().join("migrations/current.sql"),
+            "insert into missing_table values (1);\n",
+        )
+        .unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let error = run(&config, RunTarget::Main).unwrap_err();
+
+        assert!(error.to_string().contains("missing_table"));
+
+        let connection = Connection::open(&config.database_path).unwrap();
+        let hook_table_exists: i64 = connection
+            .query_row(
+                "SELECT count(*) FROM information_schema.tables WHERE table_name = 'hook_log'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(hook_table_exists, 0);
     }
 }

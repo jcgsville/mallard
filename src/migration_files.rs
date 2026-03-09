@@ -32,7 +32,7 @@ pub fn load_committed_migrations(committed_dir: &Path) -> Result<Vec<CommittedMi
     {
         let entry = entry.with_context(|| format!("failed to read {}", committed_dir.display()))?;
         let path = entry.path();
-        if path.is_file() {
+        if path.is_file() && path.extension().and_then(|ext| ext.to_str()) == Some("sql") {
             entries.push(path);
         }
     }
@@ -290,5 +290,17 @@ mod tests {
         let error = load_committed_migrations(&committed_dir).unwrap_err();
 
         assert!(error.to_string().contains("hash mismatch"));
+    }
+
+    #[test]
+    fn ignores_non_sql_files_in_committed_directory() {
+        let temp_dir = tempdir().unwrap();
+        let committed_dir = temp_dir.path().join("committed");
+        fs::create_dir_all(&committed_dir).unwrap();
+        fs::write(committed_dir.join(".gitkeep"), "").unwrap();
+
+        let migrations = load_committed_migrations(&committed_dir).unwrap();
+
+        assert!(migrations.is_empty());
     }
 }
