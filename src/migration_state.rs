@@ -10,7 +10,7 @@ pub struct AppliedMigration {
     pub previous_hash: Option<String>,
 }
 
-pub fn ensure_metadata_table(
+pub fn ensure_metadata_storage(
     connection: &Connection,
     internal_schema: &SqlIdentifier,
 ) -> Result<()> {
@@ -96,7 +96,7 @@ mod tests {
     use duckdb::Connection;
 
     use super::{
-        ensure_metadata_table, load_applied_migrations, load_applied_migrations_if_present,
+        ensure_metadata_storage, load_applied_migrations, load_applied_migrations_if_present,
         metadata_table_exists, record_applied_migration, AppliedMigration,
     };
     use crate::config::SqlIdentifier;
@@ -105,7 +105,7 @@ mod tests {
     fn creates_and_reads_metadata_rows() {
         let connection = Connection::open_in_memory().unwrap();
         let schema = SqlIdentifier::parse("mallard", "schema").unwrap();
-        ensure_metadata_table(&connection, &schema).unwrap();
+        ensure_metadata_storage(&connection, &schema).unwrap();
         record_applied_migration(
             &connection,
             &schema,

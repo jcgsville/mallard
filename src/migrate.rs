@@ -1,15 +1,15 @@
 use std::fs;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use duckdb::Connection;
 
 use crate::{
     compiler,
     config::Config,
-    migration_files::{CommittedMigration, load_committed_migrations},
+    migration_files::{load_committed_migrations, CommittedMigration},
     migration_state::{
-        AppliedMigration, ensure_metadata_table, load_applied_migrations, metadata_table_exists,
-        record_applied_migration,
+        ensure_metadata_storage, load_applied_migrations, metadata_table_exists,
+        record_applied_migration, AppliedMigration,
     },
 };
 
@@ -47,7 +47,7 @@ pub fn run(config: &Config) -> Result<MigrateResult> {
 
 fn ensure_metadata_for_migrate(connection: &Connection, config: &Config) -> Result<()> {
     if config.manage_metadata {
-        ensure_metadata_table(connection, &config.internal_schema)
+        ensure_metadata_storage(connection, &config.internal_schema)
     } else if metadata_table_exists(connection, &config.internal_schema)? {
         Ok(())
     } else {
@@ -121,12 +121,94 @@ fn apply_migration(
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::path::PathBuf;
 
     use duckdb::Connection;
     use tempfile::tempdir;
 
-    use super::run;
-    use crate::{config::Config, migration_hash, migration_state::ensure_metadata_table};
+    use super::{run, verify_applied_history};
+    use crate::{
+        config::Config,
+        migration_files::CommittedMigration,
+        migration_hash,
+        migration_state::{ensure_metadata_storage, AppliedMigration},
+    };
+
+    fn committed_migration(
+        version: u32,
+        filename: &str,
+        previous_hash: Option<&str>,
+        hash: &str,
+    ) -> CommittedMigration {
+        CommittedMigration {
+            version,
+            filename: filename.to_string(),
+            path: PathBuf::from(filename),
+            previous_hash: previous_hash.map(str::to_string),
+            hash: hash.to_string(),
+            message: format!("migration {version}"),
+            body: format!("-- body for {filename}"),
+        }
+    }
+
+    fn applied_migration(
+        filename: &str,
+        previous_hash: Option<&str>,
+        hash: &str,
+    ) -> AppliedMigration {
+        AppliedMigration {
+            filename: filename.to_string(),
+            previous_hash: previous_hash.map(str::to_string),
+            hash: hash.to_string(),
+        }
+    }
+
+    #[test]
+    fn verify_applied_history_accepts_matching_applied_prefix() {
+        let first_hash = "a".repeat(64);
+        let second_hash = "b".repeat(64);
+        let committed = vec![
+            committed_migration(1, "000001-init.sql", None, &first_hash),
+            committed_migration(2, "000002-add-users.sql", Some(&first_hash), &second_hash),
+        ];
+        let applied = vec![applied_migration("000001-init.sql", None, &first_hash)];
+
+        verify_applied_history(&committed, &applied).unwrap();
+    }
+
+    #[test]
+    fn verify_applied_history_rejects_extra_applied_migrations() {
+        let first_hash = "a".repeat(64);
+        let second_hash = "b".repeat(64);
+        let committed = vec![committed_migration(1, "000001-init.sql", None, &first_hash)];
+        let applied = vec![
+            applied_migration("000001-init.sql", None, &first_hash),
+            applied_migration("000002-add-users.sql", Some(&first_hash), &second_hash),
+        ];
+
+        let error = verify_applied_history(&committed, &applied).unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("database has 2 applied migrations but only 1 exist on disk"));
+    }
+
+    #[test]
+    fn verify_applied_history_rejects_divergent_metadata() {
+        let committed = vec![committed_migration(
+            1,
+            "000001-init.sql",
+            None,
+            &"a".repeat(64),
+        )];
+        let applied = vec![applied_migration("000001-init.sql", None, &"b".repeat(64))];
+
+        let error = verify_applied_history(&committed, &applied).unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("applied migration history diverges at 000001-init.sql"));
+    }
 
     #[test]
     fn applies_pending_committed_migrations() {
@@ -234,11 +316,9 @@ database_path = "dev.duckdb"
 
         let error = run(&config).unwrap_err();
 
-        assert!(
-            error
-                .to_string()
-                .contains("applied migration history diverges")
-        );
+        assert!(error
+            .to_string()
+            .contains("applied migration history diverges"));
     }
 
     #[test]
@@ -258,11 +338,9 @@ manage_metadata = false
         let config = Config::load(&config_path).unwrap();
         let error = run(&config).unwrap_err();
 
-        assert!(
-            error
-                .to_string()
-                .contains("metadata table mallard.migrations does not exist")
-        );
+        assert!(error
+            .to_string()
+            .contains("metadata table mallard.migrations does not exist"));
     }
 
     #[test]
@@ -291,7 +369,7 @@ manage_metadata = false
 
         let config = Config::load(&config_path).unwrap();
         let connection = Connection::open(&config.database_path).unwrap();
-        ensure_metadata_table(&connection, &config.internal_schema).unwrap();
+        ensure_metadata_storage(&connection, &config.internal_schema).unwrap();
 
         let result = run(&config).unwrap();
 
