@@ -35,7 +35,10 @@ pub fn run(config: &Config) -> Result<CommitResult> {
         render_committed_migration(previous_hash.as_deref(), &hash, &expanded_current),
     )
     .with_context(|| format!("failed to write {}", committed_path.display()))?;
-    clear_current_migration(&current).context("failed to reset current migration after commit")?;
+    if let Err(clear_error) = clear_current_migration(&current) {
+        let _ = fs::remove_file(&committed_path);
+        return Err(clear_error).context("failed to reset current migration after commit");
+    }
 
     Ok(CommitResult {
         committed_path,
@@ -117,6 +120,9 @@ fn next_migration_version(committed_len: usize) -> Result<u32> {
 #[cfg(test)]
 mod tests {
     use std::fs;
+
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
 
     use tempfile::tempdir;
 
@@ -271,6 +277,43 @@ mod tests {
             error
                 .to_string()
                 .contains("committed migration sequence has reached the maximum")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn removes_partial_committed_file_if_current_reset_fails() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("mallard.toml");
+        fs::write(&config_path, "version = 1").unwrap();
+        let committed_dir = temp_dir.path().join("migrations/committed");
+        fs::create_dir_all(&committed_dir).unwrap();
+        let current_path = temp_dir.path().join("migrations/current.sql");
+        fs::write(
+            &current_path,
+            "create table users (id integer primary key);\n",
+        )
+        .unwrap();
+
+        let original_permissions = fs::metadata(&current_path).unwrap().permissions();
+        let mut read_only_permissions = original_permissions.clone();
+        read_only_permissions.set_mode(0o444);
+        fs::set_permissions(&current_path, read_only_permissions).unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let error = run(&config).unwrap_err();
+
+        fs::set_permissions(&current_path, original_permissions).unwrap();
+
+        assert!(
+            error
+                .to_string()
+                .contains("failed to reset current migration after commit")
+        );
+        assert!(committed_dir.read_dir().unwrap().next().is_none());
+        assert_eq!(
+            fs::read_to_string(&current_path).unwrap(),
+            "create table users (id integer primary key);\n"
         );
     }
 }
