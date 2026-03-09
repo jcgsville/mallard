@@ -1,14 +1,14 @@
 use std::fs;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use duckdb::Connection;
 
 use crate::{
     compiler,
     config::Config,
-    migration_files::{load_committed_migrations, CommittedMigration},
+    migration_files::{CommittedMigration, load_committed_migrations},
     migration_state::{
-        ensure_metadata_table, load_applied_migrations, record_applied_migration, AppliedMigration,
+        AppliedMigration, ensure_metadata_table, load_applied_migrations, record_applied_migration,
     },
 };
 
@@ -224,8 +224,10 @@ database_path = "dev.duckdb"
 
         let error = run(&config).unwrap_err();
 
-        assert!(error
-            .to_string()
-            .contains("applied migration history diverges"));
+        assert!(
+            error
+                .to_string()
+                .contains("applied migration history diverges")
+        );
     }
 }

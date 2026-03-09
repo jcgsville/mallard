@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 use crate::{config::Config, migration_hash};
 
@@ -138,7 +138,7 @@ mod tests {
 
     use tempfile::tempdir;
 
-    use super::{load, overwrite_empty_with_body, CurrentMode};
+    use super::{CurrentMode, load, overwrite_empty_with_body};
     use crate::config::Config;
 
     #[test]

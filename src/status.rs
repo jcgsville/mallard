@@ -1,11 +1,11 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use duckdb::Connection;
 
 use crate::{
     config::Config,
     current_migration,
-    migration_files::{load_committed_migrations, CommittedMigration},
-    migration_state::{load_applied_migrations_if_present, AppliedMigration},
+    migration_files::{CommittedMigration, load_committed_migrations},
+    migration_state::{AppliedMigration, load_applied_migrations_if_present},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]

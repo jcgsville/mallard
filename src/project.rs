@@ -12,8 +12,6 @@ pub const DEFAULT_CONFIG: &str = r#"version = 1
 
 database_path = "${MALLARD_DB_PATH:-dev.duckdb}"
 shadow_path = "${MALLARD_SHADOW_PATH:-.mallard/shadow.duckdb}"
-migrations_dir = "migrations"
-internal_schema = "mallard"
 
 [placeholders]
 APP_SCHEMA = "main"
@@ -122,7 +120,7 @@ fn ensure_file(path: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{init, DEFAULT_CONFIG};
+    use super::{DEFAULT_CONFIG, init};
     use std::{env, fs};
     use tempfile::tempdir;
 

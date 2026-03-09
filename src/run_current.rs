@@ -83,7 +83,7 @@ mod tests {
     use duckdb::Connection;
     use tempfile::tempdir;
 
-    use super::{run, RunTarget};
+    use super::{RunTarget, run};
     use crate::{config::Config, migration_hash};
 
     #[test]

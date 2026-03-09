@@ -1,5 +1,5 @@
 use anyhow::Result;
-use duckdb::{params, Connection};
+use duckdb::{Connection, params};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppliedMigration {
@@ -92,8 +92,8 @@ mod tests {
     use duckdb::Connection;
 
     use super::{
-        ensure_metadata_table, load_applied_migrations, load_applied_migrations_if_present,
-        metadata_table_exists, record_applied_migration, AppliedMigration,
+        AppliedMigration, ensure_metadata_table, load_applied_migrations,
+        load_applied_migrations_if_present, metadata_table_exists, record_applied_migration,
     };
 
     #[test]
@@ -122,8 +122,10 @@ mod tests {
         let connection = Connection::open_in_memory().unwrap();
 
         assert!(!metadata_table_exists(&connection, "mallard").unwrap());
-        assert!(load_applied_migrations_if_present(&connection, "mallard")
-            .unwrap()
-            .is_empty());
+        assert!(
+            load_applied_migrations_if_present(&connection, "mallard")
+                .unwrap()
+                .is_empty()
+        );
     }
 }
