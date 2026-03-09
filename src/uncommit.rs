@@ -1,6 +1,6 @@
 use std::fs;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use duckdb::Connection;
 
 use crate::{
@@ -37,8 +37,7 @@ pub fn run(config: &Config) -> Result<UncommitResult> {
         );
     }
 
-    let restored_current_path =
-        current_migration::overwrite_empty_with_body(config, &latest.filename, &latest.body)?;
+    let restored_current_path = current_migration::overwrite_empty_with_body(config, &latest.body)?;
     fs::remove_file(&latest.path)
         .with_context(|| format!("failed to remove {}", latest.path.display()))?;
 

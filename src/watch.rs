@@ -33,7 +33,6 @@ struct FileStamp {
 fn collect_watch_state(config: &Config) -> Result<Vec<FileStamp>> {
     let mut paths = vec![
         config.migrations_dir.join("current.sql"),
-        config.migrations_dir.join("current"),
         config.migrations_dir.join("committed"),
         config.migrations_dir.join("fixtures"),
     ];

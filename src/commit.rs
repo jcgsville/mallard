@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use duckdb::Connection;
 
 use crate::{
@@ -63,25 +63,13 @@ fn validate_current_migration(contents: &str) -> Result<()> {
 }
 
 fn clear_current_migration(current: &current_migration::CurrentMigration) -> Result<()> {
-    match &current.mode {
-        current_migration::CurrentMode::File { path } => {
-            fs::write(path, "").with_context(|| format!("failed to reset {}", path.display()))?;
-        }
-        current_migration::CurrentMode::Directory { .. } => {
-            for part in &current.parts {
-                fs::remove_file(&part.path)
-                    .with_context(|| format!("failed to remove {}", part.path.display()))?;
-            }
-        }
-    }
+    fs::write(&current.path, "")
+        .with_context(|| format!("failed to reset {}", current.path.display()))?;
     Ok(())
 }
 
 fn current_source_path(current: &current_migration::CurrentMigration) -> PathBuf {
-    match &current.mode {
-        current_migration::CurrentMode::File { path } => path.clone(),
-        current_migration::CurrentMode::Directory { path } => path.clone(),
-    }
+    current.path.clone()
 }
 
 fn validate_against_shadow(config: &Config, current_contents: &str) -> Result<()> {
@@ -215,13 +203,17 @@ mod tests {
         let config = Config::load(&config_path).unwrap();
         let error = run(&config).unwrap_err();
 
-        assert!(error
-            .to_string()
-            .contains("current migration must not contain committed migration headers"));
-        assert!(fs::read_dir(temp_dir.path().join("migrations/committed"))
-            .unwrap()
-            .next()
-            .is_none());
+        assert!(
+            error
+                .to_string()
+                .contains("current migration must not contain committed migration headers")
+        );
+        assert!(
+            fs::read_dir(temp_dir.path().join("migrations/committed"))
+                .unwrap()
+                .next()
+                .is_none()
+        );
     }
 
     #[test]
@@ -239,8 +231,10 @@ mod tests {
         let config = Config::load(&config_path).unwrap();
         let error = run(&config).unwrap_err();
 
-        assert!(error
-            .to_string()
-            .contains("current migration failed shadow validation"));
+        assert!(
+            error
+                .to_string()
+                .contains("current migration failed shadow validation")
+        );
     }
 }

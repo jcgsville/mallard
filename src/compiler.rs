@@ -4,26 +4,18 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 use crate::{config::Config, current_migration};
 
 pub fn compile_current(config: &Config) -> Result<String> {
     let current = current_migration::load(config)?;
-    let mut compiled = String::new();
-    for part in current.parts {
-        compiled.push_str(&compile_source(config, &part.path, &part.contents)?);
-    }
-    Ok(compiled)
+    compile_source(config, &current.path, &current.contents)
 }
 
 pub fn expand_current(config: &Config) -> Result<String> {
     let current = current_migration::load(config)?;
-    let mut expanded = String::new();
-    for part in current.parts {
-        expanded.push_str(&expand_includes(config, &part.path, &part.contents)?);
-    }
-    Ok(expanded)
+    expand_includes(config, &current.path, &current.contents)
 }
 
 pub fn compile_source(config: &Config, path: &Path, raw: &str) -> Result<String> {

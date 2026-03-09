@@ -5,7 +5,7 @@ Mallard is a forward-only DuckDB schema migration CLI.
 It is built around a simple workflow:
 
 - committed migrations live in `migrations/committed`
-- one editable current migration lives in `migrations/current.sql` or `migrations/current/**/*.sql`
+- one editable current migration lives in `migrations/current.sql`
 - committed migrations are replayed into the target database in order
 - the current migration is validated separately before it is committed
 
@@ -76,12 +76,7 @@ Mallard treats these files as the authoritative forward-only history.
 
 ### Current migration
 
-The current migration is the editable work-in-progress migration. You can author it in either form:
-
-- `migrations/current.sql`
-- `migrations/current/**/*.sql`
-
-Directory mode is loaded recursively in sorted path order. You cannot use both forms at the same time.
+The current migration is the editable work-in-progress migration in `migrations/current.sql`.
 
 ### Main and shadow databases
 
@@ -254,7 +249,7 @@ Validates the current migration, writes the next committed migration, and clears
 
 Behavior:
 
-- loads the current migration from file mode or directory mode
+- loads the current migration from `current.sql`
 - expands fixture includes
 - rejects empty current SQL
 - rejects current migration lines that start with committed header syntax like `--! `
@@ -262,7 +257,7 @@ Behavior:
 - replays all committed migrations into shadow
 - resolves placeholders and runs the current migration in a transaction on shadow
 - writes the next committed migration file on success
-- clears `current.sql` or removes the source files in `current/`
+- clears `current.sql`
 
 Important details:
 
@@ -283,7 +278,7 @@ Moves the latest unapplied, committed migration back into the current migration.
 Behavior:
 
 - refuses to uncommit a migration that has already been applied to the main database
-- restores the committed SQL body into `current.sql` or `current/<filename>.sql`
+- restores the committed SQL body into `current.sql`
 - deletes the committed migration file
 
 This command changes files on disk only. It does not roll back database state. Thus, you should never uncommit a migration that was already applied to a production database.
@@ -338,7 +333,7 @@ Flags:
 Behavior:
 
 - performs one run immediately on startup
-- watches `current.sql`, `current/`, `committed/`, and `fixtures/` using polling
+- watches `current.sql`, `committed/`, and `fixtures/` using polling
 - reruns when file path, size, or modified time changes
 - by default, Mallard does not reset the main database between reruns
 - current migrations should therefore be written to tolerate repeated execution while watching
