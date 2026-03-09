@@ -82,10 +82,10 @@ impl Config {
             );
         }
 
-        let database_path = resolve_path(config_dir, &interpolate_env(&raw.database.path)?);
-        let shadow_path = resolve_path(config_dir, &interpolate_env(&raw.shadow.path)?);
-        let migrations_dir = resolve_path(config_dir, &interpolate_env(&raw.migrations.dir)?);
-        validate_identifier(&raw.migrations.internal_schema, "internal schema")?;
+        let database_path = resolve_path(config_dir, &interpolate_env(&raw.database_path)?);
+        let shadow_path = resolve_path(config_dir, &interpolate_env(&raw.shadow_path)?);
+        let migrations_dir = resolve_path(config_dir, &interpolate_env(&raw.migrations_dir)?);
+        validate_identifier(&raw.internal_schema, "internal schema")?;
 
         let mut placeholders = BTreeMap::new();
         for (key, value) in raw.placeholders {
@@ -98,7 +98,7 @@ impl Config {
             database_path,
             shadow_path,
             migrations_dir,
-            internal_schema: raw.migrations.internal_schema,
+            internal_schema: raw.internal_schema,
             placeholders,
         })
     }
@@ -178,59 +178,16 @@ fn interpolate_env(input: &str) -> Result<String> {
 #[derive(Debug, Deserialize)]
 struct RawConfig {
     version: u32,
-    #[serde(default)]
-    database: RawDatabase,
-    #[serde(default)]
-    shadow: RawShadow,
-    #[serde(default)]
-    migrations: RawMigrations,
-    #[serde(default)]
-    placeholders: BTreeMap<String, String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct RawDatabase {
     #[serde(default = "default_database_path")]
-    path: String,
-}
-
-impl Default for RawDatabase {
-    fn default() -> Self {
-        Self {
-            path: default_database_path(),
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct RawShadow {
+    database_path: String,
     #[serde(default = "default_shadow_path")]
-    path: String,
-}
-
-impl Default for RawShadow {
-    fn default() -> Self {
-        Self {
-            path: default_shadow_path(),
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct RawMigrations {
+    shadow_path: String,
     #[serde(default = "default_migrations_dir")]
-    dir: String,
+    migrations_dir: String,
     #[serde(default = "default_internal_schema")]
     internal_schema: String,
-}
-
-impl Default for RawMigrations {
-    fn default() -> Self {
-        Self {
-            dir: default_migrations_dir(),
-            internal_schema: default_internal_schema(),
-        }
-    }
+    #[serde(default)]
+    placeholders: BTreeMap<String, String>,
 }
 
 fn default_database_path() -> String {
@@ -271,14 +228,9 @@ mod tests {
             &config_path,
             r#"version = 1
 
-[database]
-path = "db/dev.duckdb"
-
-[shadow]
-path = ".mallard/shadow.duckdb"
-
-[migrations]
-dir = "sql"
+database_path = "db/dev.duckdb"
+shadow_path = ".mallard/shadow.duckdb"
+migrations_dir = "sql"
 "#,
         )
         .unwrap();
@@ -308,11 +260,8 @@ dir = "sql"
             &config_path,
             r#"version = 1
 
-[database]
-path = "${MALLARD_DB_PATH}"
-
-[shadow]
-path = "${MALLARD_SHADOW_PATH:-shadow/default.duckdb}"
+database_path = "${MALLARD_DB_PATH}"
+shadow_path = "${MALLARD_SHADOW_PATH:-shadow/default.duckdb}"
 "#,
         )
         .unwrap();
@@ -365,7 +314,6 @@ path = "${MALLARD_SHADOW_PATH:-shadow/default.duckdb}"
             &config_path,
             r#"version = 1
 
-[migrations]
 internal_schema = "bad-schema"
 "#,
         )

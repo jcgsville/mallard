@@ -10,14 +10,9 @@ use crate::config::Config;
 
 pub const DEFAULT_CONFIG: &str = r#"version = 1
 
-[database]
-path = "${MALLARD_DB_PATH:-dev.duckdb}"
-
-[shadow]
-path = "${MALLARD_SHADOW_PATH:-.mallard/shadow.duckdb}"
-
-[migrations]
-dir = "migrations"
+database_path = "${MALLARD_DB_PATH:-dev.duckdb}"
+shadow_path = "${MALLARD_SHADOW_PATH:-.mallard/shadow.duckdb}"
+migrations_dir = "migrations"
 internal_schema = "mallard"
 
 [placeholders]
@@ -181,8 +176,7 @@ mod tests {
             &config_path,
             r#"version = 1
 
-[migrations]
-dir = "db/migrations"
+migrations_dir = "db/migrations"
 "#,
         )
         .unwrap();

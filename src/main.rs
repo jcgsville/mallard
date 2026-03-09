@@ -22,11 +22,7 @@ use clap::{Parser, Subcommand};
 
 /// DuckDB schema migration CLI
 #[derive(Debug, Parser)]
-#[command(
-    name = "mallard",
-    version,
-    about = "DuckDB schema migrations"
-)]
+#[command(name = "mallard", version, about = "DuckDB schema migrations")]
 struct Cli {
     /// Path to a Mallard config file.
     #[arg(long, global = true)]

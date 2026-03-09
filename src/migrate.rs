@@ -126,8 +126,7 @@ mod tests {
             &config_path,
             r#"version = 1
 
-[database]
-path = "dev.duckdb"
+database_path = "dev.duckdb"
 "#,
         )
         .unwrap();
