@@ -60,7 +60,10 @@ fn collect_watch_state(config: &Config) -> Result<Vec<FileStamp>> {
             continue;
         }
 
-        let metadata = fs::metadata(&path)?;
+        let metadata = fs::symlink_metadata(&path)?;
+        if metadata.file_type().is_symlink() {
+            continue;
+        }
         if metadata.is_dir() {
             for entry in fs::read_dir(&path)? {
                 paths.push(entry?.path());
@@ -89,9 +92,12 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
 
+    #[cfg(unix)]
+    use std::os::unix::fs::symlink;
+
     use tempfile::tempdir;
 
-    use super::{maybe_run_for_state, FileStamp};
+    use super::{FileStamp, collect_watch_state, maybe_run_for_state};
     use crate::config::Config;
 
     fn sample_state(path: &str) -> Vec<FileStamp> {
@@ -142,5 +148,38 @@ mod tests {
         maybe_run_for_state(&config, &mut previous_state, state.clone());
 
         assert_eq!(previous_state, Some(state));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ignores_symlinked_directories_while_collecting_state() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("mallard.toml");
+        fs::write(&config_path, "version = 1").unwrap();
+        let fixtures_dir = temp_dir.path().join("migrations/fixtures");
+        fs::create_dir_all(&fixtures_dir).unwrap();
+        fs::create_dir_all(temp_dir.path().join("migrations/committed")).unwrap();
+        fs::write(
+            temp_dir.path().join("migrations/current.sql"),
+            "select 1;\n",
+        )
+        .unwrap();
+        fs::write(fixtures_dir.join("base.sql"), "select 1;\n").unwrap();
+        symlink(
+            temp_dir.path().join("migrations"),
+            fixtures_dir.join("loop"),
+        )
+        .unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let state = collect_watch_state(&config).unwrap();
+
+        assert!(
+            state
+                .iter()
+                .any(|stamp| stamp.path.ends_with("current.sql"))
+        );
+        assert!(state.iter().any(|stamp| stamp.path.ends_with("base.sql")));
+        assert!(!state.iter().any(|stamp| stamp.path.ends_with("loop")));
     }
 }

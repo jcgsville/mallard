@@ -1,11 +1,13 @@
 use std::fs;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use duckdb::Connection;
 
 use crate::{
-    config::Config, current_migration, migration_files::load_committed_migrations,
-    migration_state::load_applied_migrations_if_present,
+    config::Config,
+    current_migration,
+    migration_files::load_committed_migrations,
+    migration_state::{load_applied_migrations_if_present, verify_applied_history},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,6 +30,8 @@ pub fn run(config: &Config) -> Result<UncommitResult> {
     } else {
         Vec::new()
     };
+
+    verify_applied_history(&committed, &applied)?;
 
     if applied.len() == committed.len() {
         bail!(
@@ -62,6 +66,7 @@ mod tests {
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
 
+    use duckdb::Connection;
     use tempfile::tempdir;
 
     use super::run;
@@ -135,6 +140,53 @@ mod tests {
         let error = run(&config).unwrap_err();
 
         assert!(error.to_string().contains("already been applied"));
+    }
+
+    #[test]
+    fn rejects_uncommit_when_applied_history_diverges() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("mallard.toml");
+        fs::write(&config_path, "version = 1").unwrap();
+        let committed_dir = temp_dir.path().join("migrations/committed");
+        fs::create_dir_all(&committed_dir).unwrap();
+        fs::write(temp_dir.path().join("migrations/current.sql"), "").unwrap();
+
+        let first_body = "create table users (id integer primary key);";
+        let first_hash = migration_hash::calculate(None, first_body);
+        fs::write(
+            committed_dir.join("000001.sql"),
+            format!("--! Previous: \n--! Hash: {first_hash}\n\n{first_body}\n"),
+        )
+        .unwrap();
+
+        let second_body = "alter table users add column email text;";
+        let second_hash = migration_hash::calculate(Some(&first_hash), second_body);
+        fs::write(
+            committed_dir.join("000002.sql"),
+            format!("--! Previous: {first_hash}\n--! Hash: {second_hash}\n\n{second_body}\n"),
+        )
+        .unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        migrate::run(&config).unwrap();
+
+        let connection = Connection::open(&config.database_path).unwrap();
+        let divergent_hash = "b".repeat(64);
+        connection
+            .execute(
+                &format!(
+                    "update {}.migrations set hash = ? where filename = ?",
+                    config.internal_schema.quoted()
+                ),
+                [&divergent_hash, &"000001.sql".to_string()],
+            )
+            .unwrap();
+
+        let error = run(&config).unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("applied migration history diverges at 000001.sql"));
     }
 
     #[cfg(unix)]
