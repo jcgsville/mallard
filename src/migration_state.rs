@@ -22,6 +22,15 @@ pub fn ensure_metadata_table(connection: &Connection, internal_schema: &str) -> 
     Ok(())
 }
 
+pub fn metadata_table_exists(connection: &Connection, internal_schema: &str) -> Result<bool> {
+    let count: i64 = connection.query_row(
+        "SELECT count(*) FROM information_schema.tables WHERE table_schema = ? AND table_name = 'migrations'",
+        [internal_schema],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
+}
+
 pub fn load_applied_migrations(
     connection: &Connection,
     internal_schema: &str,
@@ -45,6 +54,17 @@ pub fn load_applied_migrations(
     }
 
     Ok(applied)
+}
+
+pub fn load_applied_migrations_if_present(
+    connection: &Connection,
+    internal_schema: &str,
+) -> Result<Vec<AppliedMigration>> {
+    if metadata_table_exists(connection, internal_schema)? {
+        load_applied_migrations(connection, internal_schema)
+    } else {
+        Ok(Vec::new())
+    }
 }
 
 pub fn record_applied_migration(
@@ -72,7 +92,8 @@ mod tests {
     use duckdb::Connection;
 
     use super::{
-        AppliedMigration, ensure_metadata_table, load_applied_migrations, record_applied_migration,
+        AppliedMigration, ensure_metadata_table, load_applied_migrations,
+        load_applied_migrations_if_present, metadata_table_exists, record_applied_migration,
     };
 
     #[test]
@@ -94,5 +115,17 @@ mod tests {
 
         assert_eq!(applied.len(), 1);
         assert_eq!(applied[0].filename, "000001-init.sql");
+    }
+
+    #[test]
+    fn returns_empty_when_metadata_table_is_missing() {
+        let connection = Connection::open_in_memory().unwrap();
+
+        assert!(!metadata_table_exists(&connection, "mallard").unwrap());
+        assert!(
+            load_applied_migrations_if_present(&connection, "mallard")
+                .unwrap()
+                .is_empty()
+        );
     }
 }

@@ -4,6 +4,8 @@ mod migration_files;
 mod migration_hash;
 mod migration_state;
 mod project;
+mod reset;
+mod status;
 
 use std::env;
 use std::path::PathBuf;
@@ -34,6 +36,16 @@ enum Commands {
 
     /// Apply committed migrations to the target database.
     Migrate,
+
+    /// Report pending committed and current migration status.
+    Status,
+
+    /// Recreate the database and reapply committed migrations.
+    Reset {
+        /// Required confirmation for destructive database reset.
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -61,6 +73,40 @@ fn main() -> Result<()> {
                 "Applied {} committed migration(s) to {}",
                 result.applied_count,
                 result.database_path.display()
+            );
+        }
+        Commands::Status => {
+            let working_dir = env::current_dir()?;
+            let config = config::Config::discover(&working_dir, cli.config.as_deref())?;
+            let result = status::run(&config)?;
+
+            println!(
+                "Pending committed migrations: {}",
+                if result.pending_committed {
+                    "yes"
+                } else {
+                    "no"
+                }
+            );
+            println!(
+                "Current migration has changes: {}",
+                if result.current_migration_has_changes {
+                    "yes"
+                } else {
+                    "no"
+                }
+            );
+            std::process::exit(result.exit_code());
+        }
+        Commands::Reset { force } => {
+            let working_dir = env::current_dir()?;
+            let config = config::Config::discover(&working_dir, cli.config.as_deref())?;
+            let result = reset::run(&config, force)?;
+
+            println!(
+                "Reset {} and applied {} committed migration(s)",
+                result.database_path.display(),
+                result.migrate_result.applied_count
             );
         }
     }
