@@ -103,21 +103,34 @@ impl Config {
 
         if raw.version != 1 {
             bail!(
-                "unsupported config version {} in {}",
-                raw.version,
-                config_path.display()
+                "invalid config {}: unsupported config version {}",
+                config_path.display(),
+                raw.version
             );
         }
 
-        let database_path = resolve_path(&project_root, &interpolate_env(&raw.database_path)?);
-        let shadow_path = resolve_path(&project_root, &interpolate_env(&raw.shadow_path)?);
-        let migrations_dir = resolve_path(&project_root, &interpolate_env(&raw.migrations_dir)?);
-        let internal_schema = SqlIdentifier::parse(&raw.internal_schema, "internal schema")?;
+        let (database_path, shadow_path, migrations_dir, internal_schema, placeholders) = (|| {
+            let database_path = resolve_path(&project_root, &interpolate_env(&raw.database_path)?);
+            let shadow_path = resolve_path(&project_root, &interpolate_env(&raw.shadow_path)?);
+            let migrations_dir =
+                resolve_path(&project_root, &interpolate_env(&raw.migrations_dir)?);
+            let internal_schema = SqlIdentifier::parse(&raw.internal_schema, "internal schema")?;
 
-        let mut placeholders = BTreeMap::new();
-        for (key, value) in raw.placeholders {
-            placeholders.insert(key, interpolate_env(&value)?);
-        }
+            let mut placeholders = BTreeMap::new();
+            for (key, value) in &raw.placeholders {
+                placeholders.insert(key.clone(), interpolate_env(value)?);
+            }
+
+            Ok::<_, anyhow::Error>((
+                database_path,
+                shadow_path,
+                migrations_dir,
+                internal_schema,
+                placeholders,
+            ))
+        })(
+        )
+        .map_err(|error| anyhow!("invalid config {}: {error}", config_path.display()))?;
 
         Ok(Self {
             version: raw.version,
@@ -243,7 +256,7 @@ fn default_manage_metadata() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::Config;
+    use super::{Config, SqlIdentifier};
     use std::{
         env, fs,
         sync::{LazyLock, Mutex},
@@ -380,6 +393,58 @@ internal_schema = "bad-schema"
 
         assert!(error
             .to_string()
+            .contains(&config_path.display().to_string()));
+        assert!(error
+            .to_string()
             .contains("internal schema must contain only ASCII letters, digits, or underscores"));
+    }
+
+    #[test]
+    fn includes_config_path_for_invalid_env_interpolation() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("mallard.toml");
+        fs::write(
+            &config_path,
+            r#"version = 1
+
+database_path = "${MISSING_ENV}"
+"#,
+        )
+        .unwrap();
+
+        let error = Config::load(&config_path).unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "invalid config {}: missing environment variable `MISSING_ENV`",
+                config_path.display()
+            )
+        );
+    }
+
+    #[test]
+    fn parses_valid_sql_identifiers() {
+        let identifier = SqlIdentifier::parse("mallard_123", "schema").unwrap();
+
+        assert_eq!(identifier.as_str(), "mallard_123");
+        assert_eq!(identifier.quoted(), "\"mallard_123\"");
+    }
+
+    #[test]
+    fn rejects_empty_sql_identifiers() {
+        let error = SqlIdentifier::parse("", "schema").unwrap_err();
+
+        assert_eq!(error.to_string(), "schema cannot be empty");
+    }
+
+    #[test]
+    fn rejects_sql_identifiers_with_invalid_start() {
+        let error = SqlIdentifier::parse("1mallard", "schema").unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            "schema must start with an ASCII letter or underscore: `1mallard`"
+        );
     }
 }
