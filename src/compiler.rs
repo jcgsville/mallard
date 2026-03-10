@@ -33,11 +33,54 @@ pub fn resolve_placeholders(config: &Config, sql: &str) -> Result<String> {
     let chars: Vec<char> = sql.chars().collect();
     let mut result = String::with_capacity(sql.len());
     let mut index = 0;
+    let mut in_single_quoted_string = false;
+    let mut in_line_comment = false;
 
     while index < chars.len() {
         let current = chars[index];
-        let previous = index.checked_sub(1).and_then(|idx| chars.get(idx));
         let next = chars.get(index + 1).copied();
+
+        if in_single_quoted_string {
+            result.push(current);
+            index += 1;
+
+            if current == '\'' {
+                if next == Some('\'') {
+                    result.push('\'');
+                    index += 1;
+                } else {
+                    in_single_quoted_string = false;
+                }
+            }
+
+            continue;
+        }
+
+        if in_line_comment {
+            result.push(current);
+            index += 1;
+            if current == '\n' {
+                in_line_comment = false;
+            }
+            continue;
+        }
+
+        if current == '\'' {
+            in_single_quoted_string = true;
+            result.push(current);
+            index += 1;
+            continue;
+        }
+
+        if current == '-' && next == Some('-') {
+            in_line_comment = true;
+            result.push(current);
+            result.push('-');
+            index += 2;
+            continue;
+        }
+
+        let previous = index.checked_sub(1).and_then(|idx| chars.get(idx));
 
         if current == ':' && previous != Some(&':') && matches!(next, Some('_') | Some('A'..='Z')) {
             let mut end = index + 1;
@@ -215,5 +258,32 @@ APP_SCHEMA = "main"
         let error = compile_current(&config).unwrap_err();
 
         assert!(error.to_string().contains("duplicate include detected"));
+    }
+
+    #[test]
+    fn ignores_placeholders_inside_strings_and_comments() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("mallard.toml");
+        fs::write(
+            &config_path,
+            r#"version = 1
+
+[placeholders]
+APP_SCHEMA = "main"
+"#,
+        )
+        .unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let compiled = resolve_placeholders(
+            &config,
+            "-- comment mentions :APP_SCHEMA\ninsert into audit values (':RETRY', 'it''s :APP_SCHEMA');\nselect * from :APP_SCHEMA.users;\n",
+        )
+        .unwrap();
+
+        assert!(compiled.contains("-- comment mentions :APP_SCHEMA"));
+        assert!(compiled.contains("':RETRY'"));
+        assert!(compiled.contains("'it''s :APP_SCHEMA'"));
+        assert!(compiled.contains("select * from main.users;"));
     }
 }

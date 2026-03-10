@@ -1,6 +1,6 @@
 use std::fs;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use duckdb::Connection;
 
 use crate::{
@@ -8,7 +8,7 @@ use crate::{
     current_migration,
     migration_files::load_committed_migrations,
     migration_state::{
-        load_applied_migrations_if_present, metadata_table_exists, verify_applied_history,
+        ensure_metadata_for_history, load_applied_migrations_if_present, verify_applied_history,
     },
 };
 
@@ -28,7 +28,7 @@ pub fn run(config: &Config) -> Result<UncommitResult> {
     let applied = if config.database_path.exists() {
         let connection = Connection::open(&config.database_path)
             .with_context(|| format!("failed to open {}", config.database_path.display()))?;
-        ensure_metadata_for_history(&connection, config)?;
+        ensure_metadata_for_history(&connection, &config.internal_schema, config.manage_metadata)?;
         load_applied_migrations_if_present(&connection, &config.internal_schema)?
     } else {
         Vec::new()
@@ -64,18 +64,6 @@ pub fn run(config: &Config) -> Result<UncommitResult> {
         restored_current_path,
     })
 }
-
-fn ensure_metadata_for_history(connection: &Connection, config: &Config) -> Result<()> {
-    if config.manage_metadata || metadata_table_exists(connection, &config.internal_schema)? {
-        Ok(())
-    } else {
-        bail!(
-            "metadata table {}.migrations does not exist and `manage_metadata` is false; cannot safely determine which migrations have been applied",
-            config.internal_schema
-        )
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -201,9 +189,11 @@ mod tests {
 
         let error = run(&config).unwrap_err();
 
-        assert!(error
-            .to_string()
-            .contains("applied migration history diverges at 000001.sql"));
+        assert!(
+            error
+                .to_string()
+                .contains("applied migration history diverges at 000001.sql")
+        );
     }
 
     #[test]
@@ -227,9 +217,11 @@ mod tests {
         Connection::open(&config.database_path).unwrap();
         let error = run(&config).unwrap_err();
 
-        assert!(error
-            .to_string()
-            .contains("cannot safely determine which migrations have been applied"));
+        assert!(
+            error
+                .to_string()
+                .contains("cannot safely determine which migrations have been applied")
+        );
     }
 
     #[cfg(unix)]

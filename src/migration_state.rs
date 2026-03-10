@@ -77,6 +77,21 @@ pub fn load_applied_migrations_if_present(
     }
 }
 
+pub fn ensure_metadata_for_history(
+    connection: &Connection,
+    internal_schema: &SqlIdentifier,
+    manage_metadata: bool,
+) -> Result<()> {
+    if manage_metadata || metadata_table_exists(connection, internal_schema)? {
+        Ok(())
+    } else {
+        bail!(
+            "metadata table {}.migrations does not exist and `manage_metadata` is false; cannot safely determine which migrations have been applied",
+            internal_schema
+        )
+    }
+}
+
 pub fn record_applied_migration(
     connection: &Connection,
     internal_schema: &SqlIdentifier,
@@ -126,9 +141,9 @@ mod tests {
     use duckdb::Connection;
 
     use super::{
-        AppliedMigration, ensure_metadata_storage, load_applied_migrations,
-        load_applied_migrations_if_present, metadata_table_exists, record_applied_migration,
-        verify_applied_history,
+        AppliedMigration, ensure_metadata_for_history, ensure_metadata_storage,
+        load_applied_migrations, load_applied_migrations_if_present, metadata_table_exists,
+        record_applied_migration, verify_applied_history,
     };
     use crate::{config::SqlIdentifier, migration_files::CommittedMigration};
 
@@ -198,5 +213,19 @@ mod tests {
         }];
 
         verify_applied_history(&committed, &applied).unwrap();
+    }
+
+    #[test]
+    fn rejects_missing_metadata_when_management_is_disabled() {
+        let connection = Connection::open_in_memory().unwrap();
+        let schema = SqlIdentifier::parse("mallard", "schema").unwrap();
+
+        let error = ensure_metadata_for_history(&connection, &schema, false).unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("cannot safely determine which migrations have been applied")
+        );
     }
 }

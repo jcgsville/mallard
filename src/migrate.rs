@@ -76,7 +76,9 @@ fn apply_migration(
 ) -> Result<()> {
     let compiled_body = compiler::resolve_placeholders(config, &migration.body)?;
     let transaction = connection.transaction()?;
-    transaction.execute_batch(&compiled_body)?;
+    transaction
+        .execute_batch(&compiled_body)
+        .with_context(|| format!("failed to apply migration {}", migration.filename))?;
     record_applied_migration(
         &transaction,
         &config.internal_schema,
