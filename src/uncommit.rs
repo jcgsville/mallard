@@ -186,6 +186,7 @@ mod tests {
                 [&divergent_hash, &"000001.sql".to_string()],
             )
             .unwrap();
+        drop(connection);
 
         let error = run(&config).unwrap_err();
 

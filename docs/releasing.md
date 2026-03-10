@@ -11,6 +11,9 @@ Mallard ships as prebuilt binaries through GitHub Releases.
 
 Each release publishes a platform archive, `install.sh`, and matching `.sha256` files.
 
+Use the per-file `.sha256` asset that matches the file you downloaded for verification.
+`checksums.txt` is a convenience manifest for the whole release, not a single-download shortcut.
+
 ## Release flow
 
 1. Make sure `Cargo.toml` has the version you want to release.
