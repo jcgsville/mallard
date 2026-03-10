@@ -35,6 +35,7 @@ pub fn resolve_placeholders(config: &Config, sql: &str) -> Result<String> {
     let mut index = 0;
     let mut in_single_quoted_string = false;
     let mut in_line_comment = false;
+    let mut in_block_comment = false;
 
     while index < chars.len() {
         let current = chars[index];
@@ -65,6 +66,17 @@ pub fn resolve_placeholders(config: &Config, sql: &str) -> Result<String> {
             continue;
         }
 
+        if in_block_comment {
+            result.push(current);
+            index += 1;
+            if current == '*' && next == Some('/') {
+                result.push('/');
+                index += 1;
+                in_block_comment = false;
+            }
+            continue;
+        }
+
         if current == '\'' {
             in_single_quoted_string = true;
             result.push(current);
@@ -76,6 +88,14 @@ pub fn resolve_placeholders(config: &Config, sql: &str) -> Result<String> {
             in_line_comment = true;
             result.push(current);
             result.push('-');
+            index += 2;
+            continue;
+        }
+
+        if current == '/' && next == Some('*') {
+            in_block_comment = true;
+            result.push(current);
+            result.push('*');
             index += 2;
             continue;
         }
@@ -284,6 +304,31 @@ APP_SCHEMA = "main"
         assert!(compiled.contains("-- comment mentions :APP_SCHEMA"));
         assert!(compiled.contains("':RETRY'"));
         assert!(compiled.contains("'it''s :APP_SCHEMA'"));
+        assert!(compiled.contains("select * from main.users;"));
+    }
+
+    #[test]
+    fn ignores_placeholders_inside_block_comments() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("mallard.toml");
+        fs::write(
+            &config_path,
+            r#"version = 1
+
+[placeholders]
+APP_SCHEMA = "main"
+"#,
+        )
+        .unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let compiled = resolve_placeholders(
+            &config,
+            "/* keep :APP_SCHEMA literal here */\nselect * from :APP_SCHEMA.users;\n",
+        )
+        .unwrap();
+
+        assert!(compiled.contains("/* keep :APP_SCHEMA literal here */"));
         assert!(compiled.contains("select * from main.users;"));
     }
 }

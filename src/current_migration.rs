@@ -16,7 +16,7 @@ impl CurrentMigration {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.raw_sql().trim().is_empty()
+        self.raw_sql().is_empty()
     }
 }
 

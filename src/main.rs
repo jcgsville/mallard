@@ -88,6 +88,7 @@ fn main() -> Result<()> {
             }
 
             println!("Prepared {}", result.committed_dir.display());
+            println!("Prepared {}", result.fixtures_dir.display());
             println!("Prepared {}", result.current_migration.display());
         }
         Commands::Migrate => {
