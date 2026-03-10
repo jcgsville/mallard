@@ -87,6 +87,14 @@ detect_target() {
       ;;
   esac
 
+  case "${arch}-${os}" in
+    x86_64-unknown-linux-gnu|x86_64-apple-darwin|aarch64-apple-darwin)
+      ;;
+    *)
+      fail "No prebuilt release for ${arch}-${os}. Download a release artifact manually from GitHub Releases."
+      ;;
+  esac
+
   TARGET="${arch}-${os}"
   ARCHIVE_EXT="$archive_ext"
   BINARY_NAME="$binary_name"
