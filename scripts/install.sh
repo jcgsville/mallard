@@ -34,7 +34,7 @@ download() {
   fi
 
   if command -v wget >/dev/null 2>&1; then
-    wget -qO "$destination" "$url"
+    wget -O "$destination" "$url"
     return
   fi
 
@@ -86,6 +86,14 @@ detect_target() {
       fail "Unsupported architecture: $machine. Download a release artifact manually from GitHub Releases."
       ;;
   esac
+
+  if [ "$kernel" = "Linux" ] && command -v ldd >/dev/null 2>&1; then
+    case "$(ldd --version 2>&1 || true)" in
+      *musl*)
+        fail "No prebuilt release for musl-based Linux systems. Build Mallard from source or install it manually on a glibc-based system."
+        ;;
+    esac
+  fi
 
   case "${arch}-${os}" in
     x86_64-unknown-linux-gnu|x86_64-apple-darwin|aarch64-apple-darwin)
