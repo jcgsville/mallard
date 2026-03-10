@@ -54,6 +54,14 @@ jobs:
         run: cargo test --locked
       - name: Build release binary
         run: cargo build --locked --release --target ${{ matrix.target }}
+      - name: Smoke test release binary
+        shell: bash
+        run: |
+          binary="target/${{ matrix.target }}/release/mallard"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            binary="${binary}.exe"
+          fi
+          "$binary" --help >/dev/null
       - name: Package release archive
         shell: bash
         run: |
