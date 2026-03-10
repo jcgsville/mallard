@@ -57,17 +57,23 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Download packaged artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist
           pattern: release-*
           merge-multiple: true
+      - name: Add release installer
+        shell: bash
+        run: |
+          cp scripts/install.sh dist/install.sh
+          sha256sum dist/install.sh > dist/install.sh.sha256
       - name: Build combined checksum file
         shell: bash
         run: cat dist/*.sha256 > dist/checksums.txt
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631 # v2.2.2
         with:
           files: dist/*
           generate_release_notes: true

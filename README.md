@@ -20,14 +20,14 @@ Mallard ships as prebuilt binaries through GitHub Releases.
 Install the latest release to `~/.local/bin`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jcgsville/mallard/main/scripts/install.sh | sh
+curl -fsSL https://github.com/jcgsville/mallard/releases/latest/download/install.sh | sh
 ```
 
 Install a specific version or target directory:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jcgsville/mallard/main/scripts/install.sh | sh -s -- --version 0.1.0
-curl -fsSL https://raw.githubusercontent.com/jcgsville/mallard/main/scripts/install.sh | sh -s -- --to /usr/local/bin
+curl -fsSL https://github.com/jcgsville/mallard/releases/download/v0.1.0/install.sh | sh -s -- --version 0.1.0
+curl -fsSL https://github.com/jcgsville/mallard/releases/latest/download/install.sh | sh -s -- --to /usr/local/bin
 ```
 
 ### Windows
@@ -56,7 +56,7 @@ cargo build --release
 - `aarch64-apple-darwin`
 - `x86_64-pc-windows-msvc`
 
-Release archives include the binary, `README.md`, `LICENSE`, and matching SHA-256 checksum files.
+Release assets include platform archives, a release-scoped `install.sh`, and matching SHA-256 checksum files.
 
 ## Quick start
 

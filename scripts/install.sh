@@ -175,3 +175,11 @@ cp "$binary_path" "${INSTALL_DIR}/${BINARY_NAME}"
 chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
 
 printf 'Installed %s to %s\n' "$BINARY_NAME" "$INSTALL_DIR"
+
+case ":${PATH}:" in
+  *":${INSTALL_DIR}:"*)
+    ;;
+  *)
+    printf 'WARNING: %s is not in your PATH. Add it to your shell profile to use %s.\n' "$INSTALL_DIR" "$BINARY_NAME" >&2
+    ;;
+esac

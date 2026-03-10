@@ -9,7 +9,7 @@ Mallard ships as prebuilt binaries through GitHub Releases.
 - `aarch64-apple-darwin`
 - `x86_64-pc-windows-msvc`
 
-Each release publishes a platform archive plus a matching `.sha256` file.
+Each release publishes a platform archive, `install.sh`, and matching `.sha256` files.
 
 ## Release flow
 
@@ -29,6 +29,7 @@ Pushing the tag triggers `.github/workflows/release.yml`, which:
 - runs the test suite on each release runner
 - builds the release binary for each supported target
 - packages the binary with `README.md` and `LICENSE`
+- uploads `install.sh` as a release asset
 - writes SHA-256 checksum files
 - creates the GitHub Release and uploads all artifacts
 
