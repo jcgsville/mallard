@@ -85,6 +85,13 @@ impl Config {
     }
 
     pub fn load(path: &Path) -> Result<Self> {
+        Self::load_with_env(path, |name| env::var(name).ok())
+    }
+
+    fn load_with_env<F>(path: &Path, env_lookup: F) -> Result<Self>
+    where
+        F: Fn(&str) -> Option<String>,
+    {
         let config_path = if path.is_absolute() {
             path.to_path_buf()
         } else {
@@ -110,15 +117,23 @@ impl Config {
         }
 
         let (database_path, shadow_path, migrations_dir, internal_schema, placeholders) = (|| {
-            let database_path = resolve_path(&project_root, &interpolate_env(&raw.database_path)?);
-            let shadow_path = resolve_path(&project_root, &interpolate_env(&raw.shadow_path)?);
-            let migrations_dir =
-                resolve_path(&project_root, &interpolate_env(&raw.migrations_dir)?);
+            let database_path = resolve_path(
+                &project_root,
+                &interpolate_env(&raw.database_path, &env_lookup)?,
+            );
+            let shadow_path = resolve_path(
+                &project_root,
+                &interpolate_env(&raw.shadow_path, &env_lookup)?,
+            );
+            let migrations_dir = resolve_path(
+                &project_root,
+                &interpolate_env(&raw.migrations_dir, &env_lookup)?,
+            );
             let internal_schema = SqlIdentifier::parse(&raw.internal_schema, "internal schema")?;
 
             let mut placeholders = BTreeMap::new();
             for (key, value) in &raw.placeholders {
-                placeholders.insert(key.clone(), interpolate_env(value)?);
+                placeholders.insert(key.clone(), interpolate_env(value, &env_lookup)?);
             }
 
             Ok::<_, anyhow::Error>((
@@ -172,7 +187,10 @@ fn resolve_path(base_dir: &Path, value: &str) -> PathBuf {
     }
 }
 
-fn interpolate_env(input: &str) -> Result<String> {
+fn interpolate_env<F>(input: &str, env_lookup: &F) -> Result<String>
+where
+    F: Fn(&str) -> Option<String>,
+{
     let mut result = String::with_capacity(input.len());
     let chars: Vec<char> = input.chars().collect();
     let mut index = 0;
@@ -198,10 +216,10 @@ fn interpolate_env(input: &str) -> Result<String> {
                 bail!("empty env var name in `{input}`");
             }
 
-            let value = match env::var(name) {
-                Ok(value) => value,
-                Err(_) => match default {
-                    Some(default) => interpolate_env(default)?,
+            let value = match env_lookup(name) {
+                Some(value) => value,
+                None => match default {
+                    Some(default) => interpolate_env(default, env_lookup)?,
                     None => bail!("missing environment variable `{name}`"),
                 },
             };
@@ -257,16 +275,8 @@ fn default_manage_metadata() -> bool {
 #[cfg(test)]
 mod tests {
     use super::{Config, SqlIdentifier};
-    use std::{
-        env, fs,
-        sync::{LazyLock, Mutex},
-    };
+    use std::{collections::BTreeMap, fs};
     use tempfile::tempdir;
-
-    // NOTE: This only serializes env mutation within this module's tests.
-    // Tests elsewhere should avoid relying on ambient MALLARD_* vars or use a
-    // compatible shared lock before mutating process environment.
-    static ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
     #[test]
     fn resolves_relative_paths_from_config_directory() {
@@ -320,13 +330,8 @@ manage_metadata = false
 
     #[test]
     fn interpolates_env_values_and_defaults() {
-        let _guard = ENV_LOCK.lock().unwrap();
         let temp_dir = tempdir().unwrap();
         let config_path = temp_dir.path().join("mallard.toml");
-
-        unsafe {
-            env::set_var("MALLARD_DB_PATH", "custom.duckdb");
-        }
 
         fs::write(
             &config_path,
@@ -338,17 +343,14 @@ shadow_path = "${MALLARD_SHADOW_PATH:-shadow/default.duckdb}"
         )
         .unwrap();
 
-        let config = Config::load(&config_path).unwrap();
+        let env = BTreeMap::from([("MALLARD_DB_PATH", "custom.duckdb".to_string())]);
+        let config = Config::load_with_env(&config_path, |name| env.get(name).cloned()).unwrap();
 
         assert_eq!(config.database_path, temp_dir.path().join("custom.duckdb"));
         assert_eq!(
             config.shadow_path,
             temp_dir.path().join("shadow/default.duckdb")
         );
-
-        unsafe {
-            env::remove_var("MALLARD_DB_PATH");
-        }
     }
 
     #[test]
