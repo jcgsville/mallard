@@ -29,12 +29,12 @@ download() {
   destination="$2"
 
   if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "$url" -o "$destination"
+    curl --connect-timeout 10 --max-time 300 -fsSL "$url" -o "$destination"
     return
   fi
 
   if command -v wget >/dev/null 2>&1; then
-    wget -O "$destination" "$url"
+    wget --timeout=10 --tries=3 -O "$destination" "$url"
     return
   fi
 

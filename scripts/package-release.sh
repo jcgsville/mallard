@@ -15,6 +15,13 @@ if [ ! -f "$BINARY_PATH" ]; then
   exit 1
 fi
 
+for bundled_file in README.md LICENSE; do
+  if [ ! -f "$bundled_file" ]; then
+    printf 'Required release file not found: %s\n' "$bundled_file" >&2
+    exit 1
+  fi
+done
+
 case "$TARGET" in
   *-pc-windows-*)
     ARCHIVE_EXT="zip"
