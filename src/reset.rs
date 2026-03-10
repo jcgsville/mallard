@@ -73,6 +73,7 @@ mod tests {
         connection
             .execute("insert into users (id) values (?)", [2])
             .unwrap();
+        drop(connection);
 
         let result = run(&config, true).unwrap();
 

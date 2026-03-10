@@ -203,6 +203,7 @@ database_path = "dev.duckdb"
                 ["b".repeat(64), "000001.sql".to_string()],
             )
             .unwrap();
+        drop(connection);
 
         let error = run(&config).unwrap_err();
 
@@ -264,6 +265,7 @@ manage_metadata = false
         let config = Config::load(&config_path).unwrap();
         let connection = Connection::open(&config.database_path).unwrap();
         ensure_metadata_storage(&connection, &config.internal_schema).unwrap();
+        drop(connection);
 
         let result = run(&config).unwrap();
 
