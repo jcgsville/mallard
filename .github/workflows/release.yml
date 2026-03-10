@@ -20,7 +20,7 @@ jobs:
       - name: Verify tag matches Cargo.toml version
         shell: bash
         run: |
-          package_version="$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')"
+          package_version="$(grep '^version' Cargo.toml | head -1 | sed 's/.*= *"\(.*\)"/\1/')"
           tag_version="${GITHUB_REF_NAME#v}"
           if [ "$tag_version" != "$package_version" ]; then
             printf 'Tag %s does not match Cargo.toml version %s\n' "$GITHUB_REF_NAME" "$package_version" >&2
