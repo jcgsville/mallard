@@ -36,7 +36,12 @@ pub fn run(config: &Config) -> Result<CommitResult> {
     )
     .with_context(|| format!("failed to write {}", committed_path.display()))?;
     if let Err(clear_error) = clear_current_migration(&current) {
-        let _ = fs::remove_file(&committed_path);
+        if let Err(remove_error) = fs::remove_file(&committed_path) {
+            return Err(clear_error).context(format!(
+                "failed to reset current migration after commit; additionally, failed to remove partial committed file {}: {remove_error}",
+                committed_path.display()
+            ));
+        }
         return Err(clear_error).context("failed to reset current migration after commit");
     }
 

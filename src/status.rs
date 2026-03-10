@@ -5,7 +5,9 @@ use crate::{
     config::Config,
     current_migration,
     migration_files::load_committed_migrations,
-    migration_state::{load_applied_migrations_if_present, verify_applied_history},
+    migration_state::{
+        load_applied_migrations_if_present, metadata_table_exists, verify_applied_history,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,6 +37,7 @@ pub fn run(config: &Config) -> Result<StatusResult> {
     let applied = if config.database_path.exists() {
         let connection = Connection::open(&config.database_path)
             .with_context(|| format!("failed to open {}", config.database_path.display()))?;
+        ensure_metadata_for_history(&connection, config)?;
         load_applied_migrations_if_present(&connection, &config.internal_schema)?
     } else {
         Vec::new()
@@ -48,10 +51,22 @@ pub fn run(config: &Config) -> Result<StatusResult> {
     })
 }
 
+fn ensure_metadata_for_history(connection: &Connection, config: &Config) -> Result<()> {
+    if config.manage_metadata || metadata_table_exists(connection, &config.internal_schema)? {
+        Ok(())
+    } else {
+        anyhow::bail!(
+            "metadata table {}.migrations does not exist and `manage_metadata` is false; cannot safely determine which migrations have been applied",
+            config.internal_schema
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
 
+    use duckdb::Connection;
     use tempfile::tempdir;
 
     use super::run;
@@ -134,5 +149,22 @@ mod tests {
 
         assert!(status.pending_committed);
         assert_eq!(status.exit_code(), 1);
+    }
+
+    #[test]
+    fn rejects_status_without_metadata_when_management_is_disabled() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("mallard.toml");
+        fs::write(&config_path, "version = 1\nmanage_metadata = false\n").unwrap();
+        fs::create_dir_all(temp_dir.path().join("migrations/committed")).unwrap();
+        fs::write(temp_dir.path().join("migrations/current.sql"), "").unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        Connection::open(&config.database_path).unwrap();
+        let error = run(&config).unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("cannot safely determine which migrations have been applied"));
     }
 }

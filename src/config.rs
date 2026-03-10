@@ -40,6 +40,25 @@ impl SqlIdentifier {
     }
 }
 
+fn validate_placeholder_key(value: &str) -> Result<()> {
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        bail!("placeholder key cannot be empty")
+    };
+
+    if !(first == '_' || first.is_ascii_uppercase()) {
+        bail!("placeholder key must start with an underscore or uppercase ASCII letter: `{value}`");
+    }
+
+    if !chars.all(|ch| ch == '_' || ch.is_ascii_uppercase() || ch.is_ascii_digit()) {
+        bail!(
+            "placeholder key must contain only uppercase ASCII letters, digits, or underscores: `{value}`"
+        );
+    }
+
+    Ok(())
+}
+
 impl fmt::Display for SqlIdentifier {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.as_str())
@@ -133,6 +152,7 @@ impl Config {
 
             let mut placeholders = BTreeMap::new();
             for (key, value) in &raw.placeholders {
+                validate_placeholder_key(key)?;
                 placeholders.insert(key.clone(), interpolate_env(value, &env_lookup)?);
             }
 
@@ -274,7 +294,7 @@ fn default_manage_metadata() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{Config, SqlIdentifier};
+    use super::{Config, SqlIdentifier, validate_placeholder_key};
     use std::{collections::BTreeMap, fs};
     use tempfile::tempdir;
 
@@ -454,6 +474,39 @@ database_path = "${MISSING_ENV}"
         assert_eq!(
             error.to_string(),
             "schema must start with an ASCII letter or underscore: `1mallard`"
+        );
+    }
+
+    #[test]
+    fn rejects_placeholder_keys_with_lowercase_letters() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("mallard.toml");
+        fs::write(
+            &config_path,
+            r#"version = 1
+
+[placeholders]
+app_schema = "main"
+"#,
+        )
+        .unwrap();
+
+        let error = Config::load(&config_path).unwrap_err();
+
+        assert!(
+            error.to_string().contains(
+                "placeholder key must start with an underscore or uppercase ASCII letter"
+            )
+        );
+    }
+
+    #[test]
+    fn rejects_placeholder_keys_with_invalid_characters() {
+        let error = validate_placeholder_key("APP-SCHEMA").unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            "placeholder key must contain only uppercase ASCII letters, digits, or underscores: `APP-SCHEMA`"
         );
     }
 }
