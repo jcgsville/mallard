@@ -60,7 +60,7 @@ case "$ARCHIVE_EXT" in
       PACKAGE_DIR_NATIVE="$(cygpath -w "$PACKAGE_DIR")"
       ARCHIVE_PATH_NATIVE="$(cygpath -w "$ARCHIVE_PATH")"
     fi
-    "$POWERSHELL_BIN" -NoLogo -NoProfile -Command "Compress-Archive -Path '$PACKAGE_DIR_NATIVE' -DestinationPath '$ARCHIVE_PATH_NATIVE'"
+    "$POWERSHELL_BIN" -NoLogo -NoProfile -Command "Compress-Archive -Path \"$PACKAGE_DIR_NATIVE\" -DestinationPath \"$ARCHIVE_PATH_NATIVE\""
     ;;
   *)
     printf 'Unsupported archive format: %s\n' "$ARCHIVE_EXT" >&2
