@@ -11,20 +11,52 @@ It is built around a simple workflow:
 
 Mallard takes heavy inspiration from the SQL-first approach of Graphile Migrate, but targets DuckDB.
 
-## Install and run
+## Install
 
-From this repository:
+Mallard ships as prebuilt binaries through GitHub Releases.
+
+### macOS and Linux
+
+Install the latest release to `~/.local/bin`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jcgsville/mallard/main/scripts/install.sh | sh
+```
+
+Install a specific version or target directory:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jcgsville/mallard/main/scripts/install.sh | sh -s -- --version 0.1.0
+curl -fsSL https://raw.githubusercontent.com/jcgsville/mallard/main/scripts/install.sh | sh -s -- --to /usr/local/bin
+```
+
+### Windows
+
+Download the `x86_64-pc-windows-msvc` zip asset from GitHub Releases, extract it, and place `mallard.exe` somewhere on your `PATH`.
+
+### From source
+
+Mallard is a Rust CLI. If you prefer a local build, use Rust 1.86 or newer:
 
 ```bash
 cargo run -- --help
 ```
 
-Or build the binary:
+Or build the binary directly:
 
 ```bash
-cargo build
-./target/debug/mallard --help
+cargo build --release
+./target/release/mallard --help
 ```
+
+### Supported release targets
+
+- `x86_64-unknown-linux-gnu`
+- `x86_64-apple-darwin`
+- `aarch64-apple-darwin`
+- `x86_64-pc-windows-msvc`
+
+Release archives include the binary, `README.md`, `LICENSE`, and matching SHA-256 checksum files.
 
 ## Quick start
 
@@ -399,6 +431,12 @@ mallard commit
 mallard migrate
 mallard status
 ```
+
+## Maintainers
+
+- CI runs on Linux, macOS, and Windows through `.github/workflows/ci.yml`.
+- Tagged releases such as `v0.1.0` publish GitHub Release binaries through `.github/workflows/release.yml`.
+- See `docs/releasing.md` for the release checklist.
 
 ## Notes and guardrails
 

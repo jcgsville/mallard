@@ -27,3 +27,6 @@ target
 
 # DuckDB database files
 *.duckdb
+
+# Local release packaging output
+dist/

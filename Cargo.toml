@@ -2,6 +2,15 @@
 name = "mallard"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.86"
+description = "Forward-only DuckDB schema migration CLI"
+license-file = "LICENSE"
+readme = "README.md"
+repository = "https://github.com/jcgsville/mallard"
+homepage = "https://github.com/jcgsville/mallard"
+keywords = ["duckdb", "migrations", "schema", "cli"]
+categories = ["command-line-utilities", "database"]
+publish = false
 
 [dependencies]
 anyhow = "1.0.100"
