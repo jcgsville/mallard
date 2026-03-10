@@ -13,6 +13,7 @@ pub fn compile_current(config: &Config) -> Result<String> {
     compile_source(config, &current.path, &current.contents)
 }
 
+#[cfg(test)]
 pub fn expand_current(config: &Config) -> Result<String> {
     let current = current_migration::load(config)?;
     expand_includes(config, &current.path, &current.contents)

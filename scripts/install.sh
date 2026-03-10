@@ -34,7 +34,7 @@ download() {
   fi
 
   if command -v wget >/dev/null 2>&1; then
-    wget --timeout=10 --read-timeout=300 --tries=3 -O "$destination" "$url"
+    wget --timeout=10 --read-timeout=300 --tries=3 --retry-connrefused --retry-on-http-error=429,500,502,503,504 -O "$destination" "$url"
     return
   fi
 
