@@ -1,21 +1,27 @@
-# mallard
+# Mallard
 
 Mallard is a forward-only DuckDB schema migration CLI.
 
 It is built around a simple workflow:
 
-- committed migrations live in `migrations/committed`
-- one editable current migration lives in `migrations/current.sql`
-- committed migrations are replayed into the target database in order
-- the current migration is validated separately before it is committed
+- start `mallard watch` and iterate on `migrations/current.sql` in development
+- commit with `mallard commit` once you're happy with a migration
+- run `mallard apply` to deploy your migrations to production
 
-Mallard takes heavy inspiration from the SQL-first approach of Graphile Migrate, but targets DuckDB.
+Mallard takes heavy inspiration from the SQL-first approach of Graphile Migrate, but Mallard targets
+DuckDB.
+
+As with most open source software, I make no claims or guarantees as to the correctness or security
+properties of Mallard. It's pretty simple, so you can test it and dump the source into an LLM of
+your choice to validate it your self. The documentation below represents the intended behavior. If
+you observe a deviation from the intended behavior, a detailed bug report filed via GitHub Issues is
+welcome 🙂
 
 ## Install
 
 Mallard ships as prebuilt binaries through GitHub Releases.
 
-### macOS and Linux
+### Install on MacOS and Linux
 
 Install the latest release to `~/.local/bin`:
 
@@ -23,18 +29,24 @@ Install the latest release to `~/.local/bin`:
 curl -fsSL https://github.com/jcgsville/mallard/releases/latest/download/install.sh | sh
 ```
 
-Install a specific version or target directory:
+Use `--version` to install a specific version:
 
 ```bash
-curl -fsSL https://github.com/jcgsville/mallard/releases/download/v0.1.0/install.sh | sh -s -- --version 0.1.0
+curl -fsSL https://github.com/jcgsville/mallard/releases/download/v0.1.0/install.sh | sh -s -- --version 0.0.2
+```
+
+Use `--to` to change the install directory:
+
+```bash
 curl -fsSL https://github.com/jcgsville/mallard/releases/latest/download/install.sh | sh -s -- --to /usr/local/bin
 ```
 
-### Windows
+### Install on Windows
 
-Download the `x86_64-pc-windows-msvc` zip asset from GitHub Releases, extract it, and place `mallard.exe` somewhere on your `PATH`.
+Download the `x86_64-pc-windows-msvc` zip asset from GitHub Releases, extract it, and place
+`mallard.exe` in the extracted folder somewhere on your `PATH`.
 
-### From source
+### Build From Source
 
 Mallard is a Rust CLI. If you prefer a local build, use Rust 1.86 or newer:
 
@@ -49,24 +61,28 @@ cargo build --release
 ./target/release/mallard --help
 ```
 
-### Supported release targets
+### Supported Release Targets
 
 - `x86_64-unknown-linux-gnu`
 - `x86_64-apple-darwin`
 - `aarch64-apple-darwin`
 - `x86_64-pc-windows-msvc`
 
-Release assets include platform archives, a release-scoped `install.sh`, and matching SHA-256 checksum files.
+Release assets include platform archives, a release-scoped `install.sh`, and matching SHA-256
+checksum files.
 
-## Quick start
+If you have a use case for another release target, let us know with a GitHub Issue.
+
+## Quick Start
 
 Initialize a project:
 
 ```bash
-cargo run -- init
+mallard init
 ```
 
-That creates a default `mallard.toml` if one does not already exist, plus:
+That creates a default `mallard.toml` if one does not already exist, plus the necessary directory
+structure:
 
 ```text
 migrations/
@@ -75,42 +91,45 @@ migrations/
   fixtures/
 ```
 
-Write SQL into `migrations/current.sql`, then iterate on it locally:
+Use the watch command to iterate on your first migration:
 
 ```bash
-cargo run -- watch
+mallard watch
 ```
 
-Commit it into the forward-only history:
+Write the SQL for your first migration in `migrations/current.sql`. Check the output of the watch
+command to see if it is working.
+
+Commit your migration:
 
 ```bash
-cargo run -- commit
+mallard commit
 ```
 
-Apply committed migrations to the main database:
+Apply committed migrations to a shared database:
 
 ```bash
-cargo run -- migrate
+mallard apply
 ```
 
-## Core concepts
+## Core Concepts
 
-### Committed migrations
+### Committed Migrations
 
 Committed migrations are immutable SQL files in `migrations/committed`. Mallard requires them to:
 
 - use contiguous numeric filenames such as `000001.sql`
 - include header metadata for previous hash and current hash
-- form a valid hash chain
+- form a valid hash chain with the previous migrations
 - contain a non-empty SQL body
 
-Mallard treats these files as the authoritative forward-only history.
+Mallard treats these files as the authoritative forward-only history of the database schema.
 
-### Current migration
+### Current Migration
 
 The current migration is the editable work-in-progress migration in `migrations/current.sql`.
 
-### Main and shadow databases
+### Main & Shadow Databases
 
 - the main database is the configured `database_path`
 - the shadow database is the configured `shadow_path`
@@ -118,7 +137,8 @@ The current migration is the editable work-in-progress migration in `migrations/
 Mallard uses these databases for different jobs.
 
 - `main` is your normal development database
-- `shadow` is a disposable validation database; Mallard recreates it when it wants a clean replay from committed history
+- `shadow` is a disposable validation database. Mallard recreates it when it wants a clean replay
+  from committed history
 
 Shadow validation means:
 
@@ -126,7 +146,8 @@ Shadow validation means:
 - compile and apply the current migration on top of that clean baseline
 - fail if either stage errors
 
-That gives Mallard a trustworthy "can this build cleanly from the committed history plus current migration?" check.
+That gives Mallard a trustworthy "can this build cleanly from the committed history plus current
+migration?" check.
 
 What Mallard does not do yet:
 
@@ -134,24 +155,23 @@ What Mallard does not do yet:
 - diff the resulting schema against an expected snapshot
 - perform deeper semantic validation beyond successful replay and execution
 
-Future improvements may include stronger schema verification, drift detection, or schema snapshot checks, but the shadow database is primarily a clean execution and commit-validation target.
+Future improvements may include stronger schema verification, drift detection, or schema snapshot
+checks, but the shadow database is primarily a clean execution and commit-validation target.
 
-### Migration idempotency
+### Migration Idempotency
 
-By default, `watch` reruns the current migration against the main development database on every change:
+By default, `watch` reruns the current migration against the main development database on every
+change:
 
 ```bash
 mallard watch
 ```
 
-Why this works:
+That means your work-in-progress migration should be idempotent to enable iteration. i.e.
+`migrations/current.sql` should be safe to run repeatedly and still converge on the schema you want.
 
-- `watch` first brings the main database up to date with committed migrations
-- it then reapplies the current migration on top of the existing main database state each time files change
-
-That means your work-in-progress migration should be idempotent to enable iteration. `migrations/current.sql` should be safe to run repeatedly and still converge on the schema you want.
-
-When plain `create ...` statements are not enough, an explicit undo/redo pattern is often the simplest approach:
+For example, instead of just `create`ing a table, your migration should `drop table if exists`
+first:
 
 ```sql
 drop table if exists people;
@@ -164,7 +184,8 @@ create table people (
 
 ## Configuration
 
-Mallard discovers `mallard.toml` by walking upward from the current working directory. Every command also accepts:
+Mallard discovers `mallard.toml` by walking upward from the current working directory. Every command
+also accepts:
 
 ```text
 --config <PATH>
@@ -172,12 +193,12 @@ Mallard discovers `mallard.toml` by walking upward from the current working dire
 
 All relative paths are resolved from the config file directory.
 
-### Supported config fields
+### Supported Config Fields
 
 ```toml
 version = 1
 database_path = "dev.duckdb"
-shadow_path = ".mallard/shadow.duckdb"
+shadow_path = "shadow.duckdb"
 migrations_dir = "migrations"
 internal_schema = "mallard"
 manage_metadata = true
@@ -191,19 +212,20 @@ APP_SCHEMA = "main"
 - `shadow_path`: shadow DuckDB file path
 - `migrations_dir`: root migration directory
 - `internal_schema`: schema name for Mallard metadata tables
-- `manage_metadata`: when `true`, Mallard creates and manages its metadata table; when `false`, the table must already exist
+- `manage_metadata`: when `true`, Mallard creates and manages its metadata table; when `false`, the
+  table must already exist
 - `[placeholders]`: raw text substitutions used during compile and execution
 
-### Config environment interpolation
+### Config Environment Interpolation
 
-String config values support:
+String config values support environment interpolation with the following syntax:
 
 - `${VAR}`
 - `${VAR:-default}`
 
-## SQL authoring features
+## SQL Authoring Features
 
-### Fixture includes
+### Fixture Includes
 
 The current migration supports include directives:
 
@@ -211,14 +233,20 @@ The current migration supports include directives:
 --! include fixtures/base_tables.sql
 ```
 
+Include directives help your git history to better track the iteration of stateless objects in the
+database like [DuckDB Macros](https://duckdb.org/docs/stable/sql/statements/create_macro). If you
+have an include file for a macro, you can more easily see the history of the macro's changes by
+looking at the git history of that file.
+
+We do not recommend managing stateful resources with macros.
+
 Behavior:
 
 - include paths must resolve to files under `migrations/fixtures`
+- include files can recursively include other files
 - include cycles are rejected
 - including the same fixture file more than once anywhere in the current migration is rejected
-- includes are expanded inline before validation, compile output, and commit output
-
-Includes are only an authoring feature for the current migration. They are expanded away when a migration is committed.
+- includes are expanded inline before validation, compile output, and and commit output
 
 ### Placeholders
 
@@ -248,15 +276,10 @@ Behavior:
 
 - if `--config` is provided and the file does not exist, Mallard writes the default config there
 - if `--config` is provided and the file already exists, Mallard reuses it
-- without `--config`, Mallard searches upward from the working directory for an existing `mallard.toml`
+- without `--config`, Mallard searches upward from the working directory for an existing
+  `mallard.toml`
 - if no config is found, Mallard creates `mallard.toml` in the working directory
 - creates `committed/`, `fixtures/`, and `current.sql` under the configured `migrations_dir`
-
-Example:
-
-```bash
-mallard init
-```
 
 ### `mallard migrate`
 
@@ -269,57 +292,33 @@ Behavior:
 - applies only pending committed migrations, in order, each in its own transaction
 - does not apply the current migration
 
-Example:
-
-```bash
-mallard migrate
-```
-
 ### `mallard commit`
 
-Validates the current migration, writes the next committed migration, and clears the current migration source.
+Validates the current migration, writes the next committed migration, and clears the current
+migration source.
 
 Behavior:
 
 - loads the current migration from `current.sql`
 - expands fixture includes
-- rejects empty current SQL
-- rejects current migration lines that start with committed header syntax like `--! `
 - recreates the shadow database
-- replays all committed migrations into shadow
-- resolves placeholders and runs the current migration in a transaction on shadow
-- writes the next committed migration file on success
+- replays all committed migrations against the shadow database
+- runs the current migration with placeholders in a transaction against the shadow shadow database
+- writes the next committed migration file using the next sequence number, like `000013.sql`
 - clears `current.sql`
-
-Important details:
-
-- includes are expanded into the committed file
-- placeholders are not baked into the committed file; they are resolved later at execution time
-- committed filenames use the next sequence number like `000001.sql`
-
-Example:
-
-```bash
-mallard commit
-```
 
 ### `mallard uncommit`
 
-Moves the latest unapplied, committed migration back into the current migration.
+Moves the latest unapplied, committed migration back into the current migration as long as it has
+not already been applied to the main database.
 
 Behavior:
 
-- refuses to uncommit a migration that has already been applied to the main database
 - restores the committed SQL body into `current.sql`
 - deletes the committed migration file
 
-This command changes files on disk only. It does not roll back database state. Thus, you should never uncommit a migration that was already applied to a production database.
-
-Example:
-
-```bash
-mallard uncommit
-```
+This command changes files on disk only. It does not roll back database state. Thus, you should
+never uncommit a migration that was already applied to a production database.
 
 ### `mallard compile [--output <PATH>]`
 
@@ -332,31 +331,19 @@ Behavior:
 - prints compiled SQL to stdout when `--output` is omitted
 - writes compiled SQL to the provided file when `--output` is set
 
-Example:
-
-```bash
-mallard compile --output build/current.sql
-```
+Note that the compiled SQL includes resolved placeholder values. Committed migrations keep the
+placeholders references, and only resolve them when migrations are applied.
 
 ### `mallard run`
 
-Brings the main database up to date, and runs the current migration against it. In general, `watch` is better suited for development, but this command can be useful in cases where a one-off run of the current migration is useful.
-
-Behavior:
-
-- compiles the current migration with includes and placeholders
-- treats empty current SQL as a no-op
-- applies the current migration in a transaction
-
-Example:
-
-```bash
-mallard run
-```
+Applies all pending, committed migrations, and then runs the current migration against the main
+database. In general, `watch` is better suited for development, but this command can be useful in
+cases where a one-off run of the current migration is useful.
 
 ### `mallard watch [--interval-ms <MS>]`
 
-Polls migration inputs and reruns the `run` flow when files change.
+Updates the main database, polls migration inputs, and reruns the current migration when files
+change.
 
 Flags:
 
@@ -364,23 +351,15 @@ Flags:
 
 Behavior:
 
-- performs one run immediately on startup
+- applies all pending, committed migrations against the main database
+- applies the current migration against the main database
 - watches `current.sql`, `committed/`, and `fixtures/` using polling
-- reruns when file path, size, or modified time changes
-- by default, Mallard does not reset the main database between reruns
-- current migrations should therefore be written to tolerate repeated execution while watching
-- does not watch `mallard.toml`
-
-Examples:
-
-```bash
-mallard watch
-mallard watch --interval-ms 500
-```
+- re-applies the current migration when file path, size, or modified time changes
 
 ### `mallard status`
 
-Reports whether committed migrations are pending and whether the current migration has content.
+Reports whether any committed migrations are pending application and whether the current migration
+has content.
 
 Behavior:
 
@@ -396,12 +375,6 @@ Exit codes:
 - `2`: current migration has changes only
 - `3`: both are true
 
-Example:
-
-```bash
-mallard status
-```
-
 ### `mallard reset --force`
 
 Destroys and rebuilds the main database from committed migrations.
@@ -414,34 +387,19 @@ Behavior:
 - does not apply the current migration
 - does not touch the shadow database
 
-Example:
+`mallard reset` is extremely destructive, and should never be run against a production database
+
+## Typical Workflow on Existing Mallard Project
 
 ```bash
-mallard reset --force
-```
+mallard watch
 
-## Typical workflow
+# edit migrations/current.sql until you're happy
 
-```bash
-mallard init
-
-# edit migrations/current.sql
-mallard run
 mallard commit
+
+# Push your changes to git branch
+
+# In your continuous deployment tool:
 mallard migrate
-mallard status
 ```
-
-## Maintainers
-
-- CI runs on Linux, macOS, and Windows through `.github/workflows/ci.yml`.
-- Tagged releases such as `v0.1.0` publish GitHub Release binaries through `.github/workflows/release.yml`.
-- See `docs/releasing.md` for the release checklist.
-
-## Notes and guardrails
-
-- Mallard is forward-only; it does not generate down migrations
-- `uncommit` only works for the latest committed migration and only before that migration reaches the main database
-- `reset` is destructive and intentionally gated behind `--force`
-- `run` can leave newly committed migrations applied even if the current migration later fails
-- placeholder values are raw SQL text; quote or escape them yourself when needed

@@ -249,6 +249,38 @@ APP_SCHEMA = "main"
     }
 
     #[test]
+    fn expands_nested_fixture_includes_for_current_sql() {
+        let temp_dir = tempdir().unwrap();
+        let config_path = temp_dir.path().join("mallard.toml");
+        fs::write(&config_path, "version = 1").unwrap();
+        let fixtures_dir = temp_dir.path().join("migrations/fixtures");
+        fs::create_dir_all(fixtures_dir.join("shared")).unwrap();
+        fs::write(
+            fixtures_dir.join("shared/base_tables.sql"),
+            "create table users (id integer primary key);\n",
+        )
+        .unwrap();
+        fs::write(
+            fixtures_dir.join("users.sql"),
+            "--! include shared/base_tables.sql\ninsert into users (id) values (1);\n",
+        )
+        .unwrap();
+        fs::write(
+            temp_dir.path().join("migrations/current.sql"),
+            "--! include fixtures/users.sql\nselect * from users;\n",
+        )
+        .unwrap();
+
+        let config = Config::load(&config_path).unwrap();
+        let expanded = expand_current(&config).unwrap();
+        let compiled = compile_current(&config).unwrap();
+
+        assert!(expanded.contains("create table users"));
+        assert!(expanded.contains("insert into users"));
+        assert!(compiled.contains("select * from users"));
+    }
+
+    #[test]
     fn fails_for_unknown_placeholders() {
         let temp_dir = tempdir().unwrap();
         let config_path = temp_dir.path().join("mallard.toml");

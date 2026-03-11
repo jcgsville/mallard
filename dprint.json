@@ -1,0 +1,10 @@
+{
+  "$schema": "https://dprint.dev/schemas/v0.json",
+  "includes": ["**/*.md"],
+  "excludes": ["target/**"],
+  "lineWidth": 100,
+  "markdown": {
+    "textWrap": "always"
+  },
+  "plugins": ["https://plugins.dprint.dev/markdown-0.21.1.wasm"]
+}
